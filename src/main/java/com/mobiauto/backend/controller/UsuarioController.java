@@ -1,6 +1,7 @@
 package com.mobiauto.backend.controller;
 
-import com.mobiauto.backend.model.Usuario;
+import com.mobiauto.backend.dto.UsuarioRequestDTO;
+import com.mobiauto.backend.dto.UsuarioResponseDTO;
 import com.mobiauto.backend.service.UsuarioService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,7 +11,6 @@ import java.util.List;
 @RestController
 @RequestMapping("/usuarios")
 public class UsuarioController {
-
     private final UsuarioService usuarioService;
 
     public UsuarioController(UsuarioService usuarioService) {
@@ -18,30 +18,27 @@ public class UsuarioController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Usuario>> listarTodos() {
-        List<Usuario> usuarios = usuarioService.findAll();
-        return ResponseEntity.ok(usuarios);
+    public ResponseEntity<List<UsuarioResponseDTO>> listarTodos() {
+        return ResponseEntity.ok(usuarioService.findAll());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Usuario> buscarPorId(@PathVariable Long id) {
+    public ResponseEntity<UsuarioResponseDTO> buscarPorId(@PathVariable Long id) {
         return usuarioService.findById(id)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-
     @GetMapping("/email")
-    public ResponseEntity<Usuario> buscarPorEmail(@RequestParam String email) {
+    public ResponseEntity<UsuarioResponseDTO> buscarPorEmail(@RequestParam String email) {
         return usuarioService.findByEmail(email)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @PostMapping
-    public ResponseEntity<Usuario> criar(@RequestBody Usuario usuario) {
-        Usuario salvo = usuarioService.save(usuario);
-        return ResponseEntity.ok(salvo);
+    public ResponseEntity<UsuarioResponseDTO> criar(@RequestBody UsuarioRequestDTO usuarioDTO) {
+        return ResponseEntity.ok(usuarioService.save(usuarioDTO));
     }
 
     @DeleteMapping("/{id}")

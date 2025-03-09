@@ -11,3 +11,6 @@ spring:
     properties:
           hibernate:
             format_sql: true
+jwt:
+  secret: "mobiauto-secret-key-1234567890-abcdefghijklmnopqrstuvwxyz1234567890-abc" # 66 caracteres
+  expiration: 86400000 # 24 horas
