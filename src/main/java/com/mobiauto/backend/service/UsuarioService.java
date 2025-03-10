@@ -126,7 +126,7 @@ public class UsuarioService {
         }
     }
 
-    private Usuario getUsuarioLogado() {
+    public Usuario getUsuarioLogado() {
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return usuarioRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new ResponseStatusException(INTERNAL_SERVER_ERROR, "Usuário logado não encontrado"));

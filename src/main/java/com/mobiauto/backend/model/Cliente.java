@@ -13,9 +13,13 @@ public class Cliente {
     @Column(nullable = false)
     private String nome;
 
-    @Column(unique = true)
+    @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(unique = true)
+    @Column(nullable = false)
     private String telefone;
+
+    @ManyToOne
+    @JoinColumn(name = "revenda_id", nullable = false)
+    private Revenda revenda;
 }
