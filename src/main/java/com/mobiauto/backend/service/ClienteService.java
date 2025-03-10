@@ -7,7 +7,6 @@ import com.mobiauto.backend.model.Revenda;
 import com.mobiauto.backend.model.Usuario;
 import com.mobiauto.backend.repository.ClienteRepository;
 import com.mobiauto.backend.repository.RevendaRepository;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -16,7 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 import static com.mobiauto.backend.model.Cargo.ADMINISTRADOR;
-import static org.springframework.http.HttpStatus.NOT_FOUND;
+import static org.springframework.http.HttpStatus.*;
 
 @Service
 public class ClienteService {
@@ -55,7 +54,7 @@ public class ClienteService {
         checkRevendaAccess(usuarioLogado, dto.getRevendaId());
 
         if (clienteRepository.existsByEmail(dto.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email já cadastrado: " + dto.getEmail());
+            throw new ResponseStatusException(CONFLICT, "Email já cadastrado: " + dto.getEmail());
         }
         Revenda revenda = revendaRepository.findById(dto.getRevendaId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Revenda não encontrada: " + dto.getRevendaId()));
@@ -76,7 +75,7 @@ public class ClienteService {
         checkRevendaAccess(usuarioLogado, cliente.getRevenda().getId());
 
         if (!cliente.getEmail().equals(dto.getEmail()) && clienteRepository.existsByEmail(dto.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email já cadastrado: " + dto.getEmail());
+            throw new ResponseStatusException(CONFLICT, "Email já cadastrado: " + dto.getEmail());
         }
         Revenda revenda = revendaRepository.findById(dto.getRevendaId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Revenda não encontrada: " + dto.getRevendaId()));
@@ -99,7 +98,7 @@ public class ClienteService {
 
     private void checkRevendaAccess(Usuario usuarioLogado, Long revendaId) {
         if (usuarioLogado.getCargo() != ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(revendaId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode gerenciar clientes da sua revenda");
+            throw new ResponseStatusException(FORBIDDEN, "Você só pode gerenciar clientes da sua revenda");
         }
     }
 

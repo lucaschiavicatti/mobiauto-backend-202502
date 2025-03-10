@@ -19,7 +19,8 @@ public class Veiculo {
     @Column(nullable = false)
     private String versao;
 
-    private Integer ano;
+    @Column(nullable = false)
+    private Integer anoModelo;
 
     @ManyToOne
     @JoinColumn(name = "revenda_id", nullable = false)
