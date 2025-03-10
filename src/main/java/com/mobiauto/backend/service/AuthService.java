@@ -24,22 +24,20 @@ public class AuthService implements UserDetailsService {
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Value("${jwt.secret}")
-    private final String secretKeyString;
+    private String secretKeyString;
 
     @Value("${jwt.expiration}")
-    private final long expirationTime;
+    private long EXPIRATION_TIME;
 
-    private SecretKey secretKey;
+    private SecretKey SECRET_KEY;
 
     public AuthService(UsuarioRepository usuarioRepository) {
         this.usuarioRepository = usuarioRepository;
-        this.secretKeyString = null;
-        this.expirationTime = 0;
     }
 
     @PostConstruct
     public void init() {
-        this.secretKey = Keys.hmacShaKeyFor(secretKeyString.getBytes(StandardCharsets.UTF_8));
+        this.SECRET_KEY = Keys.hmacShaKeyFor(secretKeyString.getBytes(StandardCharsets.UTF_8));
     }
 
     @Override
@@ -57,8 +55,8 @@ public class AuthService implements UserDetailsService {
         return Jwts.builder()
                 .subject(usuario.getEmail())
                 .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + expirationTime))
-                .signWith(secretKey)
+                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
+                .signWith(SECRET_KEY)
                 .compact();
     }
 }

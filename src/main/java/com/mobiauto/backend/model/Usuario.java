@@ -19,25 +19,20 @@ public class Usuario implements UserDetails {
     @Column(nullable = false)
     private String nome;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false, unique = true)
     private String email;
 
     @Column(nullable = false)
     private String senha;
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
     private Cargo cargo;
 
     @ManyToOne
     @JoinColumn(name = "revenda_id", nullable = false)
-    private transient Revenda revenda;
+    private Revenda revenda;
 
-    public enum Cargo {
-        PROPRIETARIO, ADMINISTRADOR, GERENTE, ASSISTENTE
-    }
-
-    // Métodos do UserDetails para Spring Security
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + cargo.name()));

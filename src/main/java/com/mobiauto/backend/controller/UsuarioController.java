@@ -18,27 +18,23 @@ public class UsuarioController {
     }
 
     @GetMapping
-    public ResponseEntity<List<UsuarioResponseDTO>> listarTodos() {
+    public ResponseEntity<List<UsuarioResponseDTO>> listar() {
         return ResponseEntity.ok(usuarioService.findAll());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<UsuarioResponseDTO> buscarPorId(@PathVariable Long id) {
-        return usuarioService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
-    }
-
-    @GetMapping("/email")
-    public ResponseEntity<UsuarioResponseDTO> buscarPorEmail(@RequestParam String email) {
-        return usuarioService.findByEmail(email)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        return ResponseEntity.ok(usuarioService.findById(id));
     }
 
     @PostMapping
     public ResponseEntity<UsuarioResponseDTO> criar(@RequestBody UsuarioRequestDTO usuarioDTO) {
         return ResponseEntity.ok(usuarioService.save(usuarioDTO));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<UsuarioResponseDTO> atualizar(@PathVariable Long id, @RequestBody UsuarioRequestDTO usuarioDTO) {
+        return ResponseEntity.ok(usuarioService.update(id, usuarioDTO));
     }
 
     @DeleteMapping("/{id}")
