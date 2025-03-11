@@ -80,7 +80,8 @@ public class JwtFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
         String path = request.getRequestURI();
         return "/auth/login".equals(path) && "POST".equalsIgnoreCase(request.getMethod()) ||
-                path.startsWith("/swagger-ui/") || path.equals("/swagger-ui.html") ||
-                path.startsWith("/v3/api-docs/");
+                path.startsWith("/swagger-ui/") ||
+                path.equals("/swagger-ui.html") ||
+                path.startsWith("/v3/api-docs");
     }
 }
