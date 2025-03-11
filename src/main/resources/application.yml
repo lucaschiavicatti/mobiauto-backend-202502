@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mobiauto
+    username: admin
+    password: admin123
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+          hibernate:
+            format_sql: true
+jwt:
+  secret: "+aufklr/RJXdPB22fypgby4YO5ZrjSKnv3HVuA+GpEjhF0QtO4bvnIBxFyApskP4KAZADGBRUAFWWhYL9IWqObk4" # 66 bytes
+  expiration: 86400000 # 24 horas
