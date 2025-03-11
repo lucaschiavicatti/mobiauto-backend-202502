@@ -80,8 +80,19 @@ public class UsuarioService implements UserDetailsService {
     }
 
     public UsuarioResponseDTO update(Long id, UsuarioRequestDTO dto) {
+        Usuario usuarioLogado = getUsuarioLogado();
+        Cargo cargoLogado = usuarioLogado.getCargo();
+
+        if (cargoLogado != Cargo.ADMINISTRADOR && cargoLogado != Cargo.PROPRIETARIO) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Apenas administradores ou proprietários podem editar perfis");
+        }
+
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado"));
+
+        if (cargoLogado == Cargo.PROPRIETARIO && !usuarioLogado.getRevenda().getId().equals(usuario.getRevenda().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Proprietários só podem editar usuários da sua própria revenda");
+        }
 
         Revenda revenda = revendaRepository.findById(dto.getRevendaId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Revenda não encontrada: " + dto.getRevendaId()));
