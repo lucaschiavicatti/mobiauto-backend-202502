@@ -28,7 +28,7 @@ O **Mobiauto Backend** é uma API RESTful projetada para gerenciar revendas de v
 - **Docker**: Para execução via containers com docker-compose.
 - **PostgreSQL 15**: Banco de dados relacional (incluído no `docker-compose`).
 
-### Bibliotecas e Serviços Externos
+### 3. Bibliotecas e Serviços Externos
 
 - **Spring Boot 3**: Framework principal para a API.
 - **Spring Security**: Autenticação e autorização.
@@ -36,7 +36,7 @@ O **Mobiauto Backend** é uma API RESTful projetada para gerenciar revendas de v
 - **Lombok**: Redução de boilerplate no código.
 - **JUnit 5 e Mockito**: Testes unitários.
 
-### Componentes da Arquitetura
+### 4. Componentes da Arquitetura
 
 - **Controllers**: Camada de entrada para requisições HTTP, mapeando endpoints REST.
 - **Services**: Lógica de negócio e regras de autorização.
@@ -44,7 +44,7 @@ O **Mobiauto Backend** é uma API RESTful projetada para gerenciar revendas de v
 - **DTOs e Mappers**: Transferência de dados e conversão entre entidades e respostas.
 - **Model**: Entidades JPA representando usuários, revendas e veículos.
 
-### Docker Compose
+### 5. Docker Compose
 O projeto inclui um arquivo docker-compose.yml para facilitar a execução em containers. Ele configura a aplicação e o banco de dados PostgreSQL.
 
 ```version: '3.8'
@@ -74,7 +74,7 @@ volumes:
 volumes:
 pgdata:
 ```
-### Dependências
+### 6. Dependências
 
 * spring-boot-starter-web
 * spring-boot-starter-data-jpa
@@ -86,7 +86,7 @@ pgdata:
 * jjwt-api
 * caelum-stella-core
 
-### Variáveis de Ambiente
+### 7. Variáveis de Ambiente
 
 ```
 spring:
@@ -96,7 +96,7 @@ spring:
         password: admin123
 ```
 
-### Suporte e Contato
+### 8. Suporte e Contato
 
 * E-mail: lucaschiavicatti@hotmail.com
 * [GITHUB](https://github.com/lucaschiavicatti/mobiauto-backend-202502)
