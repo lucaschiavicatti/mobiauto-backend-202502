@@ -1,6 +1,12 @@
 package com.mobiauto.backend.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Column;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import br.com.caelum.stella.validation.CNPJValidator;
+import br.com.caelum.stella.validation.InvalidStateException;
 import lombok.Data;
 
 @Entity
@@ -10,9 +16,19 @@ public class Revenda {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique = true, nullable = false)
+    @Column(nullable = false, unique = true)
     private String cnpj;
 
     @Column(nullable = false)
     private String nomeSocial;
+
+    public void setCnpj(String cnpj) {
+        CNPJValidator validator = new CNPJValidator();
+        try {
+            validator.assertValid(cnpj);
+        } catch (InvalidStateException e) {
+            throw new IllegalArgumentException("CNPJ inválido");
+        }
+        this.cnpj = cnpj;
+    }
 }
