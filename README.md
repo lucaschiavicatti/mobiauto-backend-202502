@@ -47,32 +47,21 @@ O **Mobiauto Backend** é uma API RESTful projetada para gerenciar revendas de v
 ### 5. Docker Compose
 O projeto inclui um arquivo docker-compose.yml para facilitar a execução em containers. Ele configura a aplicação e o banco de dados PostgreSQL.
 
-```version: '3.8'
+```
+version: '3.8'
 services:
-app:
-build: .
-ports:
-- "8080:8080"
-environment:
-- SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/mobiauto
-- SPRING_DATASOURCE_USERNAME=admin
-- SPRING_DATASOURCE_PASSWORD=secret
-- SPRING_JPA_HIBERNATE_DDL_AUTO=update
-depends_on:
-- db
-db:
-image: postgres:15
-ports:
-- "5432:5432"
-environment:
-- POSTGRES_DB=mobiauto
-- POSTGRES_USER=admin
-- POSTGRES_PASSWORD=secret
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: mobiauto
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 volumes:
-- pgdata:/var/lib/postgresql/data
-
-volumes:
-pgdata:
+  pgdata:
 ```
 ### 6. Dependências
 
