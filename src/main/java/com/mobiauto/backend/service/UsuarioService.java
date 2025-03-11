@@ -49,6 +49,17 @@ public class UsuarioService implements UserDetailsService {
     }
 
     public UsuarioResponseDTO save(UsuarioRequestDTO dto) {
+        Usuario usuarioLogado = getUsuarioLogado();
+        Cargo cargoLogado = usuarioLogado.getCargo();
+
+        if (cargoLogado != Cargo.ADMINISTRADOR && cargoLogado != Cargo.PROPRIETARIO && cargoLogado != Cargo.GERENTE) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Apenas administradores, proprietários ou gerentes podem cadastrar usuários");
+        }
+
+        if ((cargoLogado == Cargo.PROPRIETARIO || cargoLogado == Cargo.GERENTE) && !usuarioLogado.getRevenda().getId().equals(dto.getRevendaId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Proprietários e gerentes só podem cadastrar usuários em sua própria revenda");
+        }
+
         if (usuarioRepository.findByEmail(dto.getEmail()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "E-mail já cadastrado");
         }
