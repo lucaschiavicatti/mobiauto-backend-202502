@@ -12,12 +12,6 @@ public class Oportunidade {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Status status = Status.NOVO;
-
-    private String motivoConclusao;
-
     @ManyToOne
     @JoinColumn(name = "cliente_id", nullable = false)
     private Cliente cliente;
@@ -27,18 +21,24 @@ public class Oportunidade {
     private Veiculo veiculo;
 
     @ManyToOne
+    @JoinColumn(name = "usuario_id", nullable = false)
+    private Usuario usuario;
+
+    @ManyToOne
     @JoinColumn(name = "revenda_id", nullable = false)
     private Revenda revenda;
 
-    @ManyToOne
-    @JoinColumn(name = "responsavel_id")
-    private Usuario responsavel;
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private StatusOportunidade status;
 
+    @Column
+    private String motivoConclusao;
+
+    @Column(nullable = false)
     private LocalDateTime dataAtribuicao;
 
+    @Column
     private LocalDateTime dataConclusao;
-
-    public enum Status {
-        NOVO, EM_ATENDIMENTO, CONCLUIDO
-    }
 }
+

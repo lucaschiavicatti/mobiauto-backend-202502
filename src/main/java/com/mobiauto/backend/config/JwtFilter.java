@@ -46,7 +46,6 @@ public class JwtFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         logger.info("Filtrando: {}", request.getRequestURI());
 
-        // Ignorar o filtro para /auth/login
         if ("/auth/login".equals(request.getRequestURI()) && "POST".equalsIgnoreCase(request.getMethod())) {
             chain.doFilter(request, response);
             return;

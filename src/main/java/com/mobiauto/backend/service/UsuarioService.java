@@ -9,6 +9,8 @@ import com.mobiauto.backend.repository.RevendaRepository;
 import com.mobiauto.backend.repository.UsuarioRepository;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -16,11 +18,8 @@ import org.springframework.http.HttpStatus;
 
 import java.util.List;
 
-import static com.mobiauto.backend.model.Cargo.*;
-import static org.springframework.http.HttpStatus.*;
-
 @Service
-public class UsuarioService {
+public class UsuarioService implements UserDetailsService {
     private final UsuarioRepository usuarioRepository;
     private final RevendaRepository revendaRepository;
     private final PasswordEncoder passwordEncoder;
@@ -31,105 +30,71 @@ public class UsuarioService {
         this.passwordEncoder = passwordEncoder;
     }
 
+    @Override
+    public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+        return usuarioRepository.findByEmail(username)
+                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado: " + username));
+    }
+
     public List<UsuarioResponseDTO> findAll() {
-        Usuario usuarioLogado = getUsuarioLogado();
-        if (usuarioLogado.getCargo() == ADMINISTRADOR) {
-            return usuarioRepository.findAll().stream()
-                    .map(this::toResponseDTO)
-                    .toList();
-        }
-        return usuarioRepository.findAllByRevendaId(usuarioLogado.getRevenda().getId()).stream()
+        return usuarioRepository.findAll().stream()
                 .map(this::toResponseDTO)
                 .toList();
     }
 
     public UsuarioResponseDTO findById(Long id) {
-        Usuario usuarioLogado = getUsuarioLogado();
         Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Usuário não encontrado"));
-        checkRevendaAccess(usuarioLogado, usuario.getRevenda().getId());
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado"));
         return toResponseDTO(usuario);
     }
 
     public UsuarioResponseDTO save(UsuarioRequestDTO dto) {
-        Usuario usuarioLogado = getUsuarioLogado();
-        checkCadastroPermission(usuarioLogado, dto.getRevendaId());
-
-        if (usuarioRepository.existsByEmail(dto.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email já cadastrado: " + dto.getEmail());
+        if (usuarioRepository.findByEmail(dto.getEmail()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "E-mail já cadastrado");
         }
+
         Revenda revenda = revendaRepository.findById(dto.getRevendaId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Revenda não encontrada: " + dto.getRevendaId()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Revenda não encontrada: " + dto.getRevendaId()));
 
         Usuario usuario = new Usuario();
         usuario.setNome(dto.getNome());
         usuario.setEmail(dto.getEmail());
         usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
-        usuario.setCargo(dto.getCargo());
+        usuario.setCargo((dto.getCargo()));
         usuario.setRevenda(revenda);
+        usuario.setDataUltimaAtribuicao(null);
+
         usuario = usuarioRepository.save(usuario);
         return toResponseDTO(usuario);
     }
 
     public UsuarioResponseDTO update(Long id, UsuarioRequestDTO dto) {
-        Usuario usuarioLogado = getUsuarioLogado();
         Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Usuário não encontrado"));
-        checkEdicaoPermission(usuarioLogado, usuario.getRevenda().getId());
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado"));
 
-        if (!usuario.getEmail().equals(dto.getEmail()) && usuarioRepository.existsByEmail(dto.getEmail())) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email já cadastrado: " + dto.getEmail());
-        }
         Revenda revenda = revendaRepository.findById(dto.getRevendaId())
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Revenda não encontrada: " + dto.getRevendaId()));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Revenda não encontrada: " + dto.getRevendaId()));
 
         usuario.setNome(dto.getNome());
         usuario.setEmail(dto.getEmail());
-        usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
-        usuario.setCargo(dto.getCargo());
+        if (dto.getSenha() != null && !dto.getSenha().isBlank()) {
+            usuario.setSenha(passwordEncoder.encode(dto.getSenha()));
+        }
+        usuario.setCargo((dto.getCargo()));
         usuario.setRevenda(revenda);
+
         usuario = usuarioRepository.save(usuario);
         return toResponseDTO(usuario);
     }
 
     public void delete(Long id) {
-        Usuario usuarioLogado = getUsuarioLogado();
         Usuario usuario = usuarioRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Usuário não encontrado"));
-        checkRevendaAccess(usuarioLogado, usuario.getRevenda().getId());
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado"));
         usuarioRepository.deleteById(id);
     }
 
-    private void checkCadastroPermission(Usuario usuarioLogado, Long revendaId) {
-        Cargo cargo = usuarioLogado.getCargo();
-        if (cargo != ADMINISTRADOR && cargo != PROPRIETARIO && cargo != GERENTE) {
-            throw new ResponseStatusException(FORBIDDEN, "Apenas Administradores, Proprietários ou Gerentes podem cadastrar usuários");
-        }
-        if (cargo != ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(revendaId)) {
-            throw new ResponseStatusException(FORBIDDEN, "Você só pode cadastrar usuários na sua revenda");
-        }
-    }
-
-    private void checkEdicaoPermission(Usuario usuarioLogado, Long revendaId) {
-        Cargo cargo = usuarioLogado.getCargo();
-        if (cargo != ADMINISTRADOR && cargo != PROPRIETARIO) {
-            throw new ResponseStatusException(FORBIDDEN, "Apenas Administradores ou Proprietários podem editar usuários");
-        }
-        if (cargo == PROPRIETARIO && !usuarioLogado.getRevenda().getId().equals(revendaId)) {
-            throw new ResponseStatusException(FORBIDDEN, "Você só pode editar usuários da sua revenda");
-        }
-    }
-
-    private void checkRevendaAccess(Usuario usuarioLogado, Long revendaId) {
-        if (usuarioLogado.getCargo() != ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(revendaId)) {
-            throw new ResponseStatusException(FORBIDDEN, "Você só pode acessar usuários da sua revenda");
-        }
-    }
-
     public Usuario getUsuarioLogado() {
-        UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        return usuarioRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new ResponseStatusException(INTERNAL_SERVER_ERROR, "Usuário logado não encontrado"));
+        return (Usuario) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 
     private UsuarioResponseDTO toResponseDTO(Usuario usuario) {
@@ -137,8 +102,14 @@ public class UsuarioService {
                 usuario.getId(),
                 usuario.getNome(),
                 usuario.getEmail(),
-                usuario.getCargo(),
-                usuario.getRevenda().getId()
+                usuario.getCargo().name(),
+                usuario.getRevenda().getId(),
+                usuario.getDataUltimaAtribuicao()
         );
+    }
+
+    public Usuario toUsuario(UsuarioResponseDTO dto) {
+        return usuarioRepository.findById(dto.id())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado: " + dto.id()));
     }
 }

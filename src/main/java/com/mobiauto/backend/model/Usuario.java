@@ -6,8 +6,9 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
-import java.util.List;
+import java.util.Collections;
 
 @Entity
 @Data
@@ -33,9 +34,12 @@ public class Usuario implements UserDetails {
     @JoinColumn(name = "revenda_id", nullable = false)
     private Revenda revenda;
 
+    @Column
+    private LocalDateTime dataUltimaAtribuicao;
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + cargo.name()));
+        return Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + cargo.name()));
     }
 
     @Override
