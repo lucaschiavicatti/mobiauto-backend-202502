@@ -8,8 +8,6 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -24,7 +22,6 @@ import java.nio.charset.StandardCharsets;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
-    private static final Logger logger = LoggerFactory.getLogger(JwtFilter.class);
     private final AuthService authService;
 
     @Value("${jwt.secret}")
@@ -44,24 +41,15 @@ public class JwtFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        logger.info("Filtrando: {}", request.getRequestURI());
-
-        if ("/auth/login".equals(request.getRequestURI()) && "POST".equalsIgnoreCase(request.getMethod())) {
-            chain.doFilter(request, response);
-            return;
-        }
-
         String authHeader = request.getHeader("Authorization");
 
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            logger.warn("Token de autenticação não fornecido ou inválido");
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.getWriter().write("Acesso negado: Token de autenticação não fornecido ou inválido");
             return;
         }
 
         String token = authHeader.substring(7);
-        logger.info("Token: {}", token);
         String username = null;
 
         try {
@@ -71,9 +59,7 @@ public class JwtFilter extends OncePerRequestFilter {
                     .parseSignedClaims(token)
                     .getPayload()
                     .getSubject();
-            logger.info("Username extraído: {}", username);
         } catch (Exception e) {
-            logger.error("Erro ao validar token: {}", e.getMessage());
             response.setStatus(HttpServletResponse.SC_FORBIDDEN);
             response.getWriter().write("Acesso negado: Token inválido - " + e.getMessage());
             return;
@@ -81,14 +67,20 @@ public class JwtFilter extends OncePerRequestFilter {
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = authService.loadUserByUsername(username);
-            logger.info("UserDetails carregado: {}", userDetails.getUsername());
             UsernamePasswordAuthenticationToken authToken =
                     new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
             authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(authToken);
-            logger.info("Autenticação configurada");
         }
 
         chain.doFilter(request, response);
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
+        String path = request.getRequestURI();
+        return "/auth/login".equals(path) && "POST".equalsIgnoreCase(request.getMethod()) ||
+                path.startsWith("/swagger-ui/") || path.equals("/swagger-ui.html") ||
+                path.startsWith("/v3/api-docs/");
     }
 }

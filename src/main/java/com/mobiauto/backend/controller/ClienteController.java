@@ -1,5 +1,6 @@
 package com.mobiauto.backend.controller;
 
+import com.mobiauto.backend.controller.swagger.SwaggerClienteController;
 import com.mobiauto.backend.dto.ClienteRequestDTO;
 import com.mobiauto.backend.dto.ClienteResponseDTO;
 import com.mobiauto.backend.service.ClienteService;
@@ -10,7 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/clientes")
-public class ClienteController {
+public class ClienteController implements SwaggerClienteController {
     private final ClienteService clienteService;
 
     public ClienteController(ClienteService clienteService) {

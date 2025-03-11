@@ -1,5 +1,6 @@
 package com.mobiauto.backend.controller;
 
+import com.mobiauto.backend.controller.swagger.SwaggerRevendaController;
 import com.mobiauto.backend.dto.RevendaRequestDTO;
 import com.mobiauto.backend.dto.RevendaResponseDTO;
 import com.mobiauto.backend.service.RevendaService;
@@ -10,7 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/revendas")
-public class RevendaController {
+public class RevendaController implements SwaggerRevendaController {
     private final RevendaService revendaService;
 
     public RevendaController(RevendaService revendaService) {

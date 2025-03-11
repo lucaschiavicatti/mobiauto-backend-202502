@@ -1,5 +1,6 @@
 package com.mobiauto.backend.controller;
 
+import com.mobiauto.backend.controller.swagger.SwaggerOportunidadeController;
 import com.mobiauto.backend.dto.OportunidadeRequestDTO;
 import com.mobiauto.backend.dto.OportunidadeResponseDTO;
 import com.mobiauto.backend.service.OportunidadeService;
@@ -10,7 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/oportunidades")
-public class OportunidadeController {
+public class OportunidadeController implements SwaggerOportunidadeController {
     private final OportunidadeService oportunidadeService;
 
     public OportunidadeController(OportunidadeService oportunidadeService) {
