@@ -37,6 +37,18 @@ public class Usuario implements UserDetails {
     @Column
     private LocalDateTime dataUltimaAtribuicao;
 
+    public Usuario() {
+    }
+
+    public Usuario(Long id, String nome, String email, String senha, Cargo cargo, Revenda revenda) {
+        this.id = id;
+        this.nome = nome;
+        this.email = email;
+        this.senha = senha;
+        this.cargo = cargo;
+        this.revenda = revenda;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + cargo.name()));

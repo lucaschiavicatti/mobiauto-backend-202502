@@ -11,6 +11,6 @@ public interface UsuarioMapper {
     UsuarioMapper INSTANCE = Mappers.getMapper(UsuarioMapper.class);
 
     @Mapping(source = "revenda.id", target = "revendaId")
-    @Mapping(target = "cargo", expression = "java(usuario.getCargo().name())")
+    @Mapping(target = "cargo", expression = "java(usuario.getCargo())")
     UsuarioResponseDTO toResponseDTO(Usuario usuario);
 }

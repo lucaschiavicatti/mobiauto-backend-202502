@@ -8,9 +8,11 @@ import jakarta.persistence.GenerationType;
 import br.com.caelum.stella.validation.CNPJValidator;
 import br.com.caelum.stella.validation.InvalidStateException;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Data
+@NoArgsConstructor
 public class Revenda {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -30,5 +32,9 @@ public class Revenda {
             throw new IllegalArgumentException("CNPJ inválido");
         }
         this.cnpj = cnpj;
+    }
+
+    public Revenda(Long id) {
+        this.id = id;
     }
 }

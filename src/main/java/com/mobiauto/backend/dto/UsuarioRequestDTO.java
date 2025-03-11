@@ -10,4 +10,7 @@ public class UsuarioRequestDTO {
     private String senha;
     private Cargo cargo;
     private Long revendaId;
+
+    public UsuarioRequestDTO(String teste, String mail, String senha123, Cargo cargo, long l) {
+    }
 }
