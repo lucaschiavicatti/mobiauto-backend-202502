@@ -2,11 +2,13 @@ package com.mobiauto.backend.service;
 
 import com.mobiauto.backend.dto.UsuarioRequestDTO;
 import com.mobiauto.backend.dto.UsuarioResponseDTO;
+import com.mobiauto.backend.mapper.UsuarioMapper;
 import com.mobiauto.backend.model.Cargo;
 import com.mobiauto.backend.model.Revenda;
 import com.mobiauto.backend.model.Usuario;
 import com.mobiauto.backend.repository.RevendaRepository;
 import com.mobiauto.backend.repository.UsuarioRepository;
+import lombok.AllArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -18,17 +20,13 @@ import org.springframework.http.HttpStatus;
 
 import java.util.List;
 
+@AllArgsConstructor
 @Service
 public class UsuarioService implements UserDetailsService {
     private final UsuarioRepository usuarioRepository;
     private final RevendaRepository revendaRepository;
     private final PasswordEncoder passwordEncoder;
-
-    public UsuarioService(UsuarioRepository usuarioRepository, RevendaRepository revendaRepository, PasswordEncoder passwordEncoder) {
-        this.usuarioRepository = usuarioRepository;
-        this.revendaRepository = revendaRepository;
-        this.passwordEncoder = passwordEncoder;
-    }
+    private final UsuarioMapper usuarioMapper;
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
@@ -37,15 +35,35 @@ public class UsuarioService implements UserDetailsService {
     }
 
     public List<UsuarioResponseDTO> findAll() {
-        return usuarioRepository.findAll().stream()
-                .map(this::toResponseDTO)
+        Usuario usuarioLogado = getUsuarioLogado();
+        if (usuarioLogado.getCargo() == Cargo.ADMINISTRADOR) {
+            return usuarioRepository.findAll().stream()
+                    .map(usuarioMapper::toResponseDTO)
+                    .toList();
+        }
+        return usuarioRepository.findAllByRevenda_Id(usuarioLogado.getRevenda().getId()).stream()
+                .map(usuarioMapper::toResponseDTO)
                 .toList();
     }
 
     public UsuarioResponseDTO findById(Long id) {
+        Usuario usuarioLogado = getUsuarioLogado();
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado"));
-        return toResponseDTO(usuario);
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(usuario.getRevenda().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode acessar usuários da sua revenda");
+        }
+        return usuarioMapper.toResponseDTO(usuario);
+    }
+
+    public UsuarioResponseDTO findByEmail(String email) {
+        Usuario usuarioLogado = getUsuarioLogado();
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado com o e-mail: " + email));
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(usuario.getRevenda().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode acessar usuários da sua revenda");
+        }
+        return usuarioMapper.toResponseDTO(usuario);
     }
 
     public UsuarioResponseDTO save(UsuarioRequestDTO dto) {
@@ -76,7 +94,7 @@ public class UsuarioService implements UserDetailsService {
         usuario.setDataUltimaAtribuicao(null);
 
         usuario = usuarioRepository.save(usuario);
-        return toResponseDTO(usuario);
+        return usuarioMapper.toResponseDTO(usuario);
     }
 
     public UsuarioResponseDTO update(Long id, UsuarioRequestDTO dto) {
@@ -106,28 +124,25 @@ public class UsuarioService implements UserDetailsService {
         usuario.setRevenda(revenda);
 
         usuario = usuarioRepository.save(usuario);
-        return toResponseDTO(usuario);
+        return usuarioMapper.toResponseDTO(usuario);
     }
 
     public void delete(Long id) {
+        Usuario usuarioLogado = getUsuarioLogado();
+        Cargo cargoLogado = usuarioLogado.getCargo();
+
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuário não encontrado"));
+
+        if (cargoLogado != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(usuario.getRevenda().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode excluir usuários da sua revenda");
+        }
+
         usuarioRepository.deleteById(id);
     }
 
     public Usuario getUsuarioLogado() {
         return (Usuario) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    }
-
-    private UsuarioResponseDTO toResponseDTO(Usuario usuario) {
-        return new UsuarioResponseDTO(
-                usuario.getId(),
-                usuario.getNome(),
-                usuario.getEmail(),
-                usuario.getCargo().name(),
-                usuario.getRevenda().getId(),
-                usuario.getDataUltimaAtribuicao()
-        );
     }
 
     public Usuario toUsuario(UsuarioResponseDTO dto) {

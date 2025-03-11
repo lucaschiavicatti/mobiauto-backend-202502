@@ -18,20 +18,23 @@ public class RevendaController {
     }
 
     @GetMapping
-    public ResponseEntity<List<RevendaResponseDTO>> listarTodos() {
+    public ResponseEntity<List<RevendaResponseDTO>> listar() {
         return ResponseEntity.ok(revendaService.findAll());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<RevendaResponseDTO> buscarPorId(@PathVariable Long id) {
-        return revendaService.findById(id)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        return ResponseEntity.ok(revendaService.findById(id));
     }
 
     @PostMapping
     public ResponseEntity<RevendaResponseDTO> criar(@RequestBody RevendaRequestDTO revendaDTO) {
         return ResponseEntity.ok(revendaService.save(revendaDTO));
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<RevendaResponseDTO> atualizar(@PathVariable Long id, @RequestBody RevendaRequestDTO revendaDTO) {
+        return ResponseEntity.ok(revendaService.update(id, revendaDTO));
     }
 
     @DeleteMapping("/{id}")

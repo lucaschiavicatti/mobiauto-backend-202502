@@ -2,11 +2,14 @@ package com.mobiauto.backend.service;
 
 import com.mobiauto.backend.dto.ClienteRequestDTO;
 import com.mobiauto.backend.dto.ClienteResponseDTO;
+import com.mobiauto.backend.mapper.ClienteMapper;
+import com.mobiauto.backend.model.Cargo;
 import com.mobiauto.backend.model.Cliente;
 import com.mobiauto.backend.model.Revenda;
 import com.mobiauto.backend.model.Usuario;
 import com.mobiauto.backend.repository.ClienteRepository;
 import com.mobiauto.backend.repository.RevendaRepository;
+import lombok.AllArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -14,30 +17,25 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
-import static com.mobiauto.backend.model.Cargo.ADMINISTRADOR;
 import static org.springframework.http.HttpStatus.*;
 
+@AllArgsConstructor
 @Service
 public class ClienteService {
     private final ClienteRepository clienteRepository;
     private final RevendaRepository revendaRepository;
     private final UsuarioService usuarioService;
-
-    public ClienteService(ClienteRepository clienteRepository, RevendaRepository revendaRepository, UsuarioService usuarioService) {
-        this.clienteRepository = clienteRepository;
-        this.revendaRepository = revendaRepository;
-        this.usuarioService = usuarioService;
-    }
+    private final ClienteMapper clienteMapper;
 
     public List<ClienteResponseDTO> findAll() {
         Usuario usuarioLogado = getUsuarioLogado();
-        if (usuarioLogado.getCargo() == ADMINISTRADOR) {
+        if (usuarioLogado.getCargo() == Cargo.ADMINISTRADOR) {
             return clienteRepository.findAll().stream()
-                    .map(this::toResponseDTO)
+                    .map(clienteMapper::toResponseDTO)
                     .toList();
         }
         return clienteRepository.findAllByRevenda_Id(usuarioLogado.getRevenda().getId()).stream()
-                .map(this::toResponseDTO)
+                .map(clienteMapper::toResponseDTO)
                 .toList();
     }
 
@@ -46,7 +44,7 @@ public class ClienteService {
         Cliente cliente = clienteRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Cliente não encontrado"));
         checkRevendaAccess(usuarioLogado, cliente.getRevenda().getId());
-        return toResponseDTO(cliente);
+        return clienteMapper.toResponseDTO(cliente);
     }
 
     public ClienteResponseDTO save(ClienteRequestDTO dto) {
@@ -65,7 +63,7 @@ public class ClienteService {
         cliente.setTelefone(dto.getTelefone());
         cliente.setRevenda(revenda);
         cliente = clienteRepository.save(cliente);
-        return toResponseDTO(cliente);
+        return clienteMapper.toResponseDTO(cliente);
     }
 
     public ClienteResponseDTO update(Long id, ClienteRequestDTO dto) {
@@ -85,7 +83,7 @@ public class ClienteService {
         cliente.setTelefone(dto.getTelefone());
         cliente.setRevenda(revenda);
         cliente = clienteRepository.save(cliente);
-        return toResponseDTO(cliente);
+        return clienteMapper.toResponseDTO(cliente);
     }
 
     public void delete(Long id) {
@@ -97,7 +95,7 @@ public class ClienteService {
     }
 
     private void checkRevendaAccess(Usuario usuarioLogado, Long revendaId) {
-        if (usuarioLogado.getCargo() != ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(revendaId)) {
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(revendaId)) {
             throw new ResponseStatusException(FORBIDDEN, "Você só pode gerenciar clientes da sua revenda");
         }
     }
@@ -105,15 +103,5 @@ public class ClienteService {
     private Usuario getUsuarioLogado() {
         UserDetails userDetails = (UserDetails) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         return usuarioService.getUsuarioLogado();
-    }
-
-    private ClienteResponseDTO toResponseDTO(Cliente cliente) {
-        return new ClienteResponseDTO(
-                cliente.getId(),
-                cliente.getNome(),
-                cliente.getEmail(),
-                cliente.getTelefone(),
-                cliente.getRevenda().getId()
-        );
     }
 }

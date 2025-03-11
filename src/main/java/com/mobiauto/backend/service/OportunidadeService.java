@@ -2,12 +2,14 @@ package com.mobiauto.backend.service;
 
 import com.mobiauto.backend.dto.OportunidadeRequestDTO;
 import com.mobiauto.backend.dto.OportunidadeResponseDTO;
+import com.mobiauto.backend.mapper.OportunidadeMapper;
 import com.mobiauto.backend.model.*;
 import com.mobiauto.backend.repository.ClienteRepository;
 import com.mobiauto.backend.repository.OportunidadeRepository;
 import com.mobiauto.backend.repository.RevendaRepository;
 import com.mobiauto.backend.repository.VeiculoRepository;
 import com.mobiauto.backend.repository.UsuarioRepository;
+import lombok.AllArgsConstructor;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,6 +19,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
 
+@AllArgsConstructor
 @Service
 public class OportunidadeService {
     private final OportunidadeRepository oportunidadeRepository;
@@ -25,27 +28,17 @@ public class OportunidadeService {
     private final RevendaRepository revendaRepository;
     private final UsuarioService usuarioService;
     private final UsuarioRepository usuarioRepository;
-
-    public OportunidadeService(OportunidadeRepository oportunidadeRepository, ClienteRepository clienteRepository,
-                               VeiculoRepository veiculoRepository, RevendaRepository revendaRepository,
-                               UsuarioService usuarioService, UsuarioRepository usuarioRepository) {
-        this.oportunidadeRepository = oportunidadeRepository;
-        this.clienteRepository = clienteRepository;
-        this.veiculoRepository = veiculoRepository;
-        this.revendaRepository = revendaRepository;
-        this.usuarioService = usuarioService;
-        this.usuarioRepository = usuarioRepository;
-    }
+    private final OportunidadeMapper oportunidadeMapper;
 
     public List<OportunidadeResponseDTO> findAll() {
         Usuario usuarioLogado = getUsuarioLogado();
         if (usuarioLogado.getCargo() == Cargo.ADMINISTRADOR) {
             return oportunidadeRepository.findAll().stream()
-                    .map(this::toResponseDTO)
+                    .map(oportunidadeMapper::toResponseDTO)
                     .toList();
         }
         return oportunidadeRepository.findAllByRevenda_Id(usuarioLogado.getRevenda().getId()).stream()
-                .map(this::toResponseDTO)
+                .map(oportunidadeMapper::toResponseDTO)
                 .toList();
     }
 
@@ -53,13 +46,17 @@ public class OportunidadeService {
         Usuario usuarioLogado = getUsuarioLogado();
         Oportunidade oportunidade = oportunidadeRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Oportunidade não encontrada"));
-        checkRevendaAccess(usuarioLogado, oportunidade.getRevenda().getId());
-        return toResponseDTO(oportunidade);
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(oportunidade.getRevenda().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode acessar oportunidades da sua revenda");
+        }
+        return oportunidadeMapper.toResponseDTO(oportunidade);
     }
 
     public OportunidadeResponseDTO save(OportunidadeRequestDTO dto) {
         Usuario usuarioLogado = getUsuarioLogado();
-        checkRevendaAccess(usuarioLogado, dto.getRevendaId());
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(dto.getRevendaId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode criar oportunidades na sua revenda");
+        }
 
         Cliente cliente = clienteRepository.findById(dto.getClienteId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente não encontrado: " + dto.getClienteId()));
@@ -100,14 +97,21 @@ public class OportunidadeService {
         oportunidade.setDataConclusao(status == StatusOportunidade.CONCLUIDO ? agora : null);
 
         oportunidade = oportunidadeRepository.save(oportunidade);
-        return toResponseDTO(oportunidade);
+        return oportunidadeMapper.toResponseDTO(oportunidade);
     }
 
     public OportunidadeResponseDTO update(Long id, OportunidadeRequestDTO dto) {
         Usuario usuarioLogado = getUsuarioLogado();
         Oportunidade oportunidade = oportunidadeRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Oportunidade não encontrada"));
-        checkEditPermission(usuarioLogado, oportunidade);
+
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(oportunidade.getRevenda().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode editar oportunidades da sua revenda");
+        }
+
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && usuarioLogado.getCargo() != Cargo.PROPRIETARIO && usuarioLogado.getCargo() != Cargo.GERENTE && !usuarioLogado.getId().equals(oportunidade.getUsuario().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode editar suas próprias oportunidades");
+        }
 
         Cliente cliente = clienteRepository.findById(dto.getClienteId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente não encontrado: " + dto.getClienteId()));
@@ -146,31 +150,17 @@ public class OportunidadeService {
         }
 
         oportunidade = oportunidadeRepository.save(oportunidade);
-        return toResponseDTO(oportunidade);
+        return oportunidadeMapper.toResponseDTO(oportunidade);
     }
 
     public void delete(Long id) {
         Usuario usuarioLogado = getUsuarioLogado();
         Oportunidade oportunidade = oportunidadeRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Oportunidade não encontrada"));
-        checkRevendaAccess(usuarioLogado, oportunidade.getRevenda().getId());
+        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(oportunidade.getRevenda().getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode excluir oportunidades da sua revenda");
+        }
         oportunidadeRepository.deleteById(id);
-    }
-
-    private void checkRevendaAccess(Usuario usuarioLogado, Long revendaId) {
-        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR && !usuarioLogado.getRevenda().getId().equals(revendaId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode gerenciar oportunidades da sua revenda");
-        }
-    }
-
-    private void checkEditPermission(Usuario usuarioLogado, Oportunidade oportunidade) {
-        if (usuarioLogado.getCargo() != Cargo.ADMINISTRADOR &&
-                usuarioLogado.getCargo() != Cargo.PROPRIETARIO &&
-                usuarioLogado.getCargo() != Cargo.GERENTE &&
-                !usuarioLogado.getId().equals(oportunidade.getUsuario().getId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Você só pode editar suas próprias oportunidades");
-        }
-        checkRevendaAccess(usuarioLogado, oportunidade.getRevenda().getId());
     }
 
     private Usuario distribuirParaAssistente(Revenda revenda) {
@@ -192,19 +182,5 @@ public class OportunidadeService {
 
     private Usuario getUsuarioLogado() {
         return (Usuario) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-    }
-
-    private OportunidadeResponseDTO toResponseDTO(Oportunidade oportunidade) {
-        return new OportunidadeResponseDTO(
-                oportunidade.getId(),
-                oportunidade.getCliente().getId(),
-                oportunidade.getVeiculo().getId(),
-                oportunidade.getUsuario().getId(),
-                oportunidade.getRevenda().getId(),
-                oportunidade.getStatus().name(),
-                oportunidade.getMotivoConclusao(),
-                oportunidade.getDataAtribuicao(),
-                oportunidade.getDataConclusao()
-        );
     }
 }

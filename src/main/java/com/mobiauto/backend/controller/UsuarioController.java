@@ -27,6 +27,11 @@ public class UsuarioController {
         return ResponseEntity.ok(usuarioService.findById(id));
     }
 
+    @GetMapping("/email/{email}")
+    public ResponseEntity<UsuarioResponseDTO> buscarPorEmail(@PathVariable String email) {
+        return ResponseEntity.ok(usuarioService.findByEmail(email));
+    }
+
     @PostMapping
     public ResponseEntity<UsuarioResponseDTO> criar(@RequestBody UsuarioRequestDTO usuarioDTO) {
         return ResponseEntity.ok(usuarioService.save(usuarioDTO));
