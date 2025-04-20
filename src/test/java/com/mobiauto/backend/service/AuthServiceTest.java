@@ -1,25 +1,29 @@
 package com.mobiauto.backend.service;
 
 import com.mobiauto.backend.dto.LoginRequestDTO;
+import com.mobiauto.backend.dto.LoginResponseDTO;
 import com.mobiauto.backend.model.Cargo;
 import com.mobiauto.backend.model.Revenda;
 import com.mobiauto.backend.model.Usuario;
 import com.mobiauto.backend.repository.UsuarioRepository;
-import io.jsonwebtoken.Jwts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 
+import java.util.Collections;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -28,94 +32,84 @@ class AuthServiceTest {
     @Mock
     private UsuarioRepository usuarioRepository;
 
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private JwtEncoder jwtEncoder;
+
     @InjectMocks
     private AuthService authService;
 
-    private BCryptPasswordEncoder passwordEncoder;
+    private Usuario usuario;
+    private LoginRequestDTO loginRequestDTO;
+    private static final String EMAIL = "test@example.com";
+    private static final String SENHA = "password123";
+    private static final String SENHA_ENCODED = "$2a$10$encodedPassword";
+    private static final Long REVENDA_ID = 1L;
+    private static final String JWT_TOKEN = "mocked-jwt-token";
+    private static final Long EXPIRES_IN = 300L;
 
     @BeforeEach
     void setUp() {
-        passwordEncoder = new BCryptPasswordEncoder();
-        ReflectionTestUtils.setField(authService, "secretKeyString", "mobiauto-secret-key-1234567890-abcdefghijklmnopqrstuvwxyz1234567890-abc");
-        ReflectionTestUtils.setField(authService, "EXPIRATION_TIME", 86400000L);
-        authService.init();
+        Revenda revenda = new Revenda();
+        revenda.setId(REVENDA_ID);
+
+        usuario = new Usuario();
+        usuario.setEmail(EMAIL);
+        usuario.setSenha(SENHA_ENCODED);
+        usuario.setCargo(Cargo.ADMINISTRADOR);
+        usuario.setRevenda(revenda);
+
+        loginRequestDTO = new LoginRequestDTO(EMAIL, SENHA);
     }
 
     @Test
-    void loadUserByUsername_DeveRetornarUsuario_QuandoEmailExiste() {
-        String email = "joao@example.com";
-        Usuario usuario = new Usuario(1L, "João", email, passwordEncoder.encode("senha123"), Cargo.ADMINISTRADOR, new Revenda(1L));
-        when(usuarioRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+    void autenticar_Sucesso_RetornaLoginResponseDTOComClaimsCorretos() {
 
-        UserDetails userDetails = authService.loadUserByUsername(email);
+        when(usuarioRepository.findByEmail(EMAIL)).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches(SENHA, SENHA_ENCODED)).thenReturn(true);
 
-        assertNotNull(userDetails);
-        assertEquals(email, userDetails.getUsername());
-        assertEquals("ROLE_ADMINISTRADOR", userDetails.getAuthorities().iterator().next().getAuthority());
-        verify(usuarioRepository, times(1)).findByEmail(email);
+        Jwt jwt = mock(Jwt.class);
+        when(jwt.getTokenValue()).thenReturn(JWT_TOKEN);
+        when(jwtEncoder.encode(any(JwtEncoderParameters.class))).thenReturn(jwt);
+
+        LoginResponseDTO response = authService.authenticate(loginRequestDTO);
+
+        assertNotNull(response);
+        assertEquals(JWT_TOKEN, response.accessToken());
+        assertEquals(EXPIRES_IN, response.expiresIn());
+        verify(usuarioRepository).findByEmail(EMAIL);
+        verify(passwordEncoder).matches(SENHA, SENHA_ENCODED);
+        verify(jwtEncoder).encode(argThat(params -> {
+            JwtClaimsSet claims = params.getClaims();
+            return claims.getClaim("iss").equals("mobiauto") &&
+                    claims.getSubject().equals(EMAIL) &&
+                    claims.getClaimAsStringList("roles").equals(Collections.singletonList(Cargo.ADMINISTRADOR.name())) &&
+                    claims.getClaimAsString("revendaId").equals(REVENDA_ID.toString());
+        }));
     }
 
     @Test
-    void loadUserByUsername_DeveLancarExcecao_QuandoEmailNaoExiste() {
-        String email = "invalido@example.com";
-        when(usuarioRepository.findByEmail(email)).thenReturn(Optional.empty());
+    void autenticar_UsuarioNaoEncontrado_LancaBadCredentialsException() {
 
-        UsernameNotFoundException exception = assertThrows(UsernameNotFoundException.class, () -> {
-            authService.loadUserByUsername(email);
-        });
-        assertEquals("Usuário não encontrado: " + email, exception.getMessage());
-        verify(usuarioRepository, times(1)).findByEmail(email);
-    }
+        when(usuarioRepository.findByEmail(EMAIL)).thenReturn(Optional.empty());
 
-    @Test
-    void authenticate_DeveGerarToken_QuandoCredenciaisValidas() {
-        String email = "joao@example.com";
-        String senha = "senha123";
-        String senhaCriptografada = passwordEncoder.encode(senha);
-        Usuario usuario = new Usuario(1L, "João", email, senhaCriptografada, Cargo.ADMINISTRADOR, new Revenda(1L));
-        LoginRequestDTO loginDTO = new LoginRequestDTO(email, senha);
-        when(usuarioRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
-
-        String token = authService.authenticate(loginDTO);
-
-        assertNotNull(token);
-        String subject = Jwts.parser()
-                .setSigningKey("mobiauto-secret-key-1234567890-abcdefghijklmnopqrstuvwxyz1234567890-abc".getBytes())
-                .build()
-                .parseClaimsJws(token)
-                .getBody()
-                .getSubject();
-        assertEquals(email, subject);
-        verify(usuarioRepository, times(1)).findByEmail(email);
-    }
-
-    @Test
-    void authenticate_DeveLancarExcecao_QuandoEmailNaoExiste() {
-        String email = "invalido@example.com";
-        LoginRequestDTO loginDTO = new LoginRequestDTO(email, "senha123");
-        when(usuarioRepository.findByEmail(email)).thenReturn(Optional.empty());
-
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            authService.authenticate(loginDTO);
-        });
+        BadCredentialsException exception = assertThrows(BadCredentialsException.class, () -> authService.authenticate(loginRequestDTO));
         assertEquals("Credenciais inválidas", exception.getMessage());
-        verify(usuarioRepository, times(1)).findByEmail(email);
+        verify(usuarioRepository).findByEmail(EMAIL);
+        verifyNoInteractions(passwordEncoder, jwtEncoder);
     }
 
     @Test
-    void authenticate_DeveLancarExcecao_QuandoSenhaIncorreta() {
-        String email = "joao@example.com";
-        String senhaCorreta = "senha123";
-        String senhaIncorreta = "senhaErrada";
-        String senhaCriptografada = passwordEncoder.encode(senhaCorreta);
-        Usuario usuario = new Usuario(1L, "João", email, senhaCriptografada, Cargo.ADMINISTRADOR, new Revenda(1L));
-        LoginRequestDTO loginDTO = new LoginRequestDTO(email, senhaIncorreta);
-        when(usuarioRepository.findByEmail(email)).thenReturn(Optional.of(usuario));
+    void autenticar_SenhaInvalida_LancaBadCredentialsException() {
+        when(usuarioRepository.findByEmail(EMAIL)).thenReturn(Optional.of(usuario));
+        when(passwordEncoder.matches(SENHA, SENHA_ENCODED)).thenReturn(false);
 
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> {
-            authService.authenticate(loginDTO);
-        });
+        BadCredentialsException exception = assertThrows(BadCredentialsException.class, () -> authService.authenticate(loginRequestDTO));
         assertEquals("Credenciais inválidas", exception.getMessage());
-        verify(usuarioRepository, times(1)).findByEmail(email);
+        verify(usuarioRepository).findByEmail(EMAIL);
+        verify(passwordEncoder).matches(SENHA, SENHA_ENCODED);
+        verifyNoInteractions(jwtEncoder);
     }
 }

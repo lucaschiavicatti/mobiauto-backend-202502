@@ -1,62 +1,52 @@
 package com.mobiauto.backend.service;
 
 import com.mobiauto.backend.dto.LoginRequestDTO;
+import com.mobiauto.backend.dto.LoginResponseDTO;
 import com.mobiauto.backend.model.Usuario;
 import com.mobiauto.backend.repository.UsuarioRepository;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.stereotype.Service;
 
-import jakarta.annotation.PostConstruct;
+import java.util.Collections;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
+import static java.time.Instant.now;
 
 @Service
-public class AuthService implements UserDetailsService {
+public class AuthService {
     private final UsuarioRepository usuarioRepository;
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    private final PasswordEncoder passwordEncoder;
+    private final JwtEncoder jwtEncoder;
+    private static final long EXPIRES_IN = 300L;
 
-    @Value("${jwt.secret}")
-    private String secretKeyString;
-
-    @Value("${jwt.expiration}")
-    private long EXPIRATION_TIME;
-
-    private SecretKey SECRET_KEY;
-
-    public AuthService(UsuarioRepository usuarioRepository) {
+    public AuthService(UsuarioRepository usuarioRepository, PasswordEncoder passwordEncoder, JwtEncoder jwtEncoder) {
         this.usuarioRepository = usuarioRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtEncoder = jwtEncoder;
     }
 
-    @PostConstruct
-    public void init() {
-        this.SECRET_KEY = Keys.hmacShaKeyFor(secretKeyString.getBytes(StandardCharsets.UTF_8));
-    }
-
-    @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        return usuarioRepository.findByEmail(email)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado: " + email));
-    }
-
-    public String authenticate(LoginRequestDTO loginDTO) {
+    public LoginResponseDTO authenticate(LoginRequestDTO loginDTO) {
         Usuario usuario = usuarioRepository.findByEmail(loginDTO.getEmail())
-                .orElseThrow(() -> new RuntimeException("Credenciais inválidas"));
-        if (!passwordEncoder.matches(loginDTO.getSenha(), usuario.getSenha())) {
-            throw new RuntimeException("Credenciais inválidas");
+                .orElseThrow(() -> new BadCredentialsException("Credenciais inválidas"));
+        if (!usuario.isLoginCorrect(passwordEncoder, loginDTO)) {
+            throw new BadCredentialsException("Credenciais inválidas");
         }
-        return Jwts.builder()
+        var jwtValue = jwtValue(usuario);
+        return new LoginResponseDTO(jwtValue, EXPIRES_IN);
+    }
+
+    private String jwtValue(Usuario usuario) {
+        var claims = JwtClaimsSet.builder()
+                .issuer("mobiauto")
                 .subject(usuario.getEmail())
-                .issuedAt(new Date())
-                .expiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
-                .signWith(SECRET_KEY)
-                .compact();
+                .issuedAt(now())
+                .expiresAt(now().plusSeconds(EXPIRES_IN))
+                .claim("roles", Collections.singletonList(usuario.getCargo().name()))
+                .claim("revendaId", usuario.getRevenda().getId().toString())
+                .build();
+        return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
     }
 }
