@@ -5,27 +5,29 @@ import com.mobiauto.backend.dto.VeiculoResponseDTO;
 import com.mobiauto.backend.mapper.VeiculoMapper;
 import com.mobiauto.backend.model.Cargo;
 import com.mobiauto.backend.model.Revenda;
-import com.mobiauto.backend.model.Usuario;
 import com.mobiauto.backend.model.Veiculo;
 import com.mobiauto.backend.repository.RevendaRepository;
 import com.mobiauto.backend.repository.VeiculoRepository;
+import com.mobiauto.backend.utils.JwtAuthUtil;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
 
+import static com.mobiauto.backend.model.Cargo.ADMINISTRADOR;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.http.HttpStatus.*;
 
 @ExtendWith(MockitoExtension.class)
 class VeiculoServiceTest {
@@ -39,202 +41,398 @@ class VeiculoServiceTest {
     @Mock
     private VeiculoMapper veiculoMapper;
 
+    @Mock
+    private Jwt jwt;
+
     @InjectMocks
     private VeiculoService veiculoService;
 
-    private Usuario usuarioAdmin;
-    private Usuario usuarioGerente;
+    private Veiculo veiculo;
     private Revenda revenda;
+    private VeiculoRequestDTO veiculoRequestDTO;
+    private VeiculoResponseDTO veiculoResponseDTO;
+    private static final Long VEICULO_ID = 1L;
+    private static final Long REVENDA_ID = 1L;
+    private static final Long OUTRA_REVENDA_ID = 2L;
+    private static final String MARCA = "Toyota";
+    private static final String MODELO = "Corolla";
+    private static final String VERSAO = "XLE";
+    private static final int ANO_MODELO = 2023;
+    private static final List<Cargo> CARGOS_ADMIN = List.of(ADMINISTRADOR);
+    private static final List<Cargo> CARGOS_NAO_ADMIN = List.of(Cargo.ASSISTENTE);
+
+    private MockedStatic<JwtAuthUtil> jwtAuthUtilMockedStatic;
 
     @BeforeEach
     void setUp() {
-        revenda = new Revenda(1L);
-        usuarioAdmin = new Usuario(1L, "Admin", "admin@example.com", "senha", Cargo.ADMINISTRADOR, revenda);
-        usuarioGerente = new Usuario(2L, "Gerente", "gerente@example.com", "senha", Cargo.GERENTE, revenda);
+        revenda = new Revenda();
+        revenda.setId(REVENDA_ID);
+
+        veiculo = new Veiculo();
+        veiculo.setId(VEICULO_ID);
+        veiculo.setMarca(MARCA);
+        veiculo.setModelo(MODELO);
+        veiculo.setVersao(VERSAO);
+        veiculo.setAnoModelo(ANO_MODELO);
+        veiculo.setRevenda(revenda);
+
+        veiculoRequestDTO = new VeiculoRequestDTO(MARCA, MODELO, VERSAO, ANO_MODELO, REVENDA_ID);
+
+        veiculoResponseDTO = new VeiculoResponseDTO(VEICULO_ID, MARCA, MODELO, VERSAO, ANO_MODELO, REVENDA_ID);
+
+        jwtAuthUtilMockedStatic = mockStatic(JwtAuthUtil.class);
     }
 
-    private void mockSecurityContext(Usuario usuario) {
-        Authentication authentication = mock(Authentication.class);
-        when(authentication.getPrincipal()).thenReturn(usuario);
-        SecurityContext securityContext = mock(SecurityContext.class);
-        when(securityContext.getAuthentication()).thenReturn(authentication);
-        SecurityContextHolder.setContext(securityContext);
+    @AfterEach
+    void tearDown() {
+        jwtAuthUtilMockedStatic.close();
     }
 
     @Test
-    void findAll_DeveRetornarTodosVeiculos_QuandoUsuarioAdmin() {
-        mockSecurityContext(usuarioAdmin);
-        Veiculo veiculo = new Veiculo();
+    void buscarTodos_Admin_RetornaTodosVeiculos() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
         when(veiculoRepository.findAll()).thenReturn(List.of(veiculo));
-        VeiculoResponseDTO dto = new VeiculoResponseDTO(1L, "teste", "teste", "teste", 2025, 1L);
-        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(dto);
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(veiculoResponseDTO);
 
         List<VeiculoResponseDTO> result = veiculoService.findAll();
 
+        assertNotNull(result);
         assertEquals(1, result.size());
-        assertEquals(dto, result.get(0));
+        assertEquals(veiculoResponseDTO, result.get(0));
         verify(veiculoRepository).findAll();
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, veiculoMapper);
+        verifyNoInteractions(revendaRepository);
     }
 
     @Test
-    void findAll_DeveRetornarVeiculosDaRevenda_QuandoUsuarioNaoAdmin() {
-        mockSecurityContext(usuarioGerente);
-        Veiculo veiculo = new Veiculo();
-        when(veiculoRepository.findAllByRevenda_Id(1L)).thenReturn(List.of(veiculo));
-        VeiculoResponseDTO dto = new VeiculoResponseDTO(1L, "teste", "teste", "teste", 2025, 1L);
-        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(dto);
+    void buscarTodos_NaoAdmin_RetornaVeiculosDaRevenda() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findAllByRevenda_Id(REVENDA_ID)).thenReturn(List.of(veiculo));
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(veiculoResponseDTO);
 
         List<VeiculoResponseDTO> result = veiculoService.findAll();
 
+        assertNotNull(result);
         assertEquals(1, result.size());
-        assertEquals(dto, result.get(0));
-        verify(veiculoRepository).findAllByRevenda_Id(1L);
+        assertEquals(veiculoResponseDTO, result.get(0));
+        verify(veiculoRepository).findAllByRevenda_Id(REVENDA_ID);
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, veiculoMapper);
+        verifyNoInteractions(revendaRepository);
     }
 
     @Test
-    void findById_DeveRetornarVeiculo_QuandoUsuarioTemAcesso() {
-        mockSecurityContext(usuarioGerente);
-        Veiculo veiculo = new Veiculo();
-        veiculo.setRevenda(revenda);
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
-        VeiculoResponseDTO dto = new VeiculoResponseDTO(1L, "teste", "teste", "teste", 2025, 1L);
-        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(dto);
+    void buscarPorId_Admin_Sucesso() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(veiculoResponseDTO);
 
-        VeiculoResponseDTO result = veiculoService.findById(1L);
+        VeiculoResponseDTO result = veiculoService.findById(VEICULO_ID);
 
-        assertEquals(dto, result);
-        verify(veiculoRepository).findById(1L);
+        assertNotNull(result);
+        assertEquals(veiculoResponseDTO, result);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, veiculoMapper);
+        verifyNoInteractions(revendaRepository);
+    }
+    @Test
+    void buscarPorId_NaoAdmin_MesmaRevenda_Sucesso() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(veiculoResponseDTO);
+
+        VeiculoResponseDTO result = veiculoService.findById(VEICULO_ID);
+
+        assertNotNull(result);
+        assertEquals(veiculoResponseDTO, result);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, veiculoMapper);
+        verifyNoInteractions(revendaRepository);
     }
 
     @Test
-    void findById_DeveLancarForbidden_QuandoUsuarioSemAcesso() {
-        mockSecurityContext(usuarioGerente);
-        Veiculo veiculo = new Veiculo();
-        veiculo.setRevenda(new Revenda(2L));
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
+    void buscarPorId_NaoAdmin_RevendaDiferente_LancaForbidden() {
+        Revenda outraRevenda = new Revenda();
+        outraRevenda.setId(OUTRA_REVENDA_ID);
+        veiculo.setRevenda(outraRevenda);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.findById(1L));
-        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.findById(VEICULO_ID);
+        });
+        assertEquals(FORBIDDEN, exception.getStatusCode());
+        assertEquals("Você só pode acessar veículos da sua revenda", exception.getReason());
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(veiculoMapper, revendaRepository);
     }
 
     @Test
-    void findById_DeveLancarNotFound_QuandoVeiculoNaoExiste() {
-        mockSecurityContext(usuarioAdmin);
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.empty());
+    void buscarPorId_VeiculoNaoEncontrado_LancaNotFound() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.empty());
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.findById(1L));
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.findById(VEICULO_ID);
+        });
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Veículo não encontrado", exception.getReason());
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(veiculoMapper, revendaRepository);
     }
 
     @Test
-    void save_DeveSalvarVeiculo_QuandoGerenteNaPropriaRevenda() {
-        Revenda revendaMock = mock(Revenda.class);
-        when(revendaMock.getId()).thenReturn(1L);
-        usuarioGerente.setRevenda(revendaMock);
-        mockSecurityContext(usuarioGerente);
-        VeiculoRequestDTO dto = new VeiculoRequestDTO("teste", "teste", "teste", 2025, 1L);
-        when(revendaRepository.findById(1L)).thenReturn(Optional.of(revenda));
-        Veiculo veiculo = new Veiculo();
+    void salvar_Admin_Sucesso() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
         when(veiculoRepository.save(any(Veiculo.class))).thenReturn(veiculo);
-        VeiculoResponseDTO responseDTO = new VeiculoResponseDTO(1L, "teste", "teste", "teste", 2025, 1L);
-        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(responseDTO);
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(veiculoResponseDTO);
 
-        VeiculoResponseDTO result = veiculoService.save(dto);
+        VeiculoResponseDTO result = veiculoService.save(veiculoRequestDTO);
 
-        assertEquals(responseDTO, result);
+        assertNotNull(result);
+        assertEquals(veiculoResponseDTO, result);
+        verify(revendaRepository).findById(REVENDA_ID);
         verify(veiculoRepository).save(any(Veiculo.class));
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, revendaRepository, veiculoMapper);
     }
 
     @Test
-    void save_DeveLancarForbidden_QuandoGerenteForaDaRevenda() {
-        mockSecurityContext(usuarioGerente);
-        VeiculoRequestDTO dto = new VeiculoRequestDTO("teste", "teste", "teste", 2025, 2L);
-
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.save(dto));
-        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
-    }
-
-    @Test
-    void save_DeveLancarNotFound_QuandoRevendaNaoExiste() {
-        mockSecurityContext(usuarioAdmin);
-        VeiculoRequestDTO dto = new VeiculoRequestDTO("teste", "teste", "teste", 2025, 1L);
-        when(revendaRepository.findById(1L)).thenReturn(Optional.empty());
-
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.save(dto));
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
-    }
-
-    @Test
-    void update_DeveAtualizarVeiculo_QuandoGerenteNaPropriaRevenda() {
-        Revenda revendaMock = mock(Revenda.class);
-        when(revendaMock.getId()).thenReturn(1L);
-        usuarioGerente.setRevenda(revendaMock);
-        mockSecurityContext(usuarioGerente);
-        VeiculoRequestDTO dto = new VeiculoRequestDTO("teste", "teste", "teste", 2021, 1L);
-        Veiculo veiculo = new Veiculo();
-        veiculo.setRevenda(revenda);
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
-        when(revendaRepository.findById(1L)).thenReturn(Optional.of(revenda));
+    void salvar_NaoAdmin_MesmaRevenda_Sucesso() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
         when(veiculoRepository.save(any(Veiculo.class))).thenReturn(veiculo);
-        VeiculoResponseDTO responseDTO = new VeiculoResponseDTO(1L, "teste", "teste", "teste", 2021, 1L);
-        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(responseDTO);
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(veiculoResponseDTO);
 
-        VeiculoResponseDTO result = veiculoService.update(1L, dto);
+        VeiculoResponseDTO result = veiculoService.save(veiculoRequestDTO);
 
-        assertEquals(responseDTO, result);
+        assertNotNull(result);
+        assertEquals(veiculoResponseDTO, result);
+        verify(revendaRepository).findById(REVENDA_ID);
         verify(veiculoRepository).save(any(Veiculo.class));
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, revendaRepository, veiculoMapper);
     }
 
     @Test
-    void update_DeveLancarForbidden_QuandoGerenteForaDaRevenda() {
-        mockSecurityContext(usuarioGerente);
-        Veiculo veiculo = new Veiculo();
-        veiculo.setRevenda(new Revenda(2L));
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
-        VeiculoRequestDTO dto = new VeiculoRequestDTO("teste", "teste", "teste", 2021, 2L);
+    void salvar_NaoAdmin_RevendaDiferente_LancaForbidden() {
+        VeiculoRequestDTO dtoOutraRevenda = new VeiculoRequestDTO(MARCA, MODELO, VERSAO, ANO_MODELO, OUTRA_REVENDA_ID);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.update(1L, dto));
-        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.save(dtoOutraRevenda);
+        });
+        assertEquals(FORBIDDEN, exception.getStatusCode());
+        assertEquals("Você só pode criar veículos na sua revenda", exception.getReason());
+        verifyNoInteractions(veiculoRepository, revendaRepository, veiculoMapper);
     }
 
     @Test
-    void update_DeveLancarNotFound_QuandoVeiculoNaoExiste() {
-        mockSecurityContext(usuarioAdmin);
-        VeiculoRequestDTO dto = new VeiculoRequestDTO("teste", "teste", "teste", 2021, 1L);
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.empty());
+    void salvar_RevendaNaoEncontrada_LancaNotFound() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.empty());
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.update(1L, dto));
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.save(veiculoRequestDTO);
+        });
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Revenda não encontrada: " + REVENDA_ID, exception.getReason());
+        verify(revendaRepository).findById(REVENDA_ID);
+        verifyNoMoreInteractions(revendaRepository);
+        verifyNoInteractions(veiculoRepository, veiculoMapper);
     }
 
     @Test
-    void delete_DeveDeletarVeiculo_QuandoAdmin() {
-        mockSecurityContext(usuarioAdmin);
-        Veiculo veiculo = new Veiculo();
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
+    void atualizar_Admin_Sucesso() {
+        VeiculoRequestDTO novoDto = new VeiculoRequestDTO("Honda", "Civic", "Touring", 2024, REVENDA_ID);
+        VeiculoResponseDTO novoResponseDTO = new VeiculoResponseDTO(VEICULO_ID, "Honda", "Civic", "Touring", 2024, REVENDA_ID);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(veiculoRepository.save(veiculo)).thenReturn(veiculo);
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(novoResponseDTO);
 
-        veiculoService.delete(1L);
+        VeiculoResponseDTO result = veiculoService.update(VEICULO_ID, novoDto);
 
-        verify(veiculoRepository).deleteById(1L);
+        assertNotNull(result);
+        assertEquals(novoResponseDTO, result);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(revendaRepository).findById(REVENDA_ID);
+        verify(veiculoRepository).save(veiculo);
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, revendaRepository, veiculoMapper);
     }
 
     @Test
-    void delete_DeveLancarForbidden_QuandoGerenteForaDaRevenda() {
-        mockSecurityContext(usuarioGerente);
-        Veiculo veiculo = new Veiculo();
-        veiculo.setRevenda(new Revenda(2L));
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
+    void atualizar_NaoAdmin_MesmaRevenda_Sucesso() {
+        VeiculoRequestDTO novoDto = new VeiculoRequestDTO("Honda", "Civic", "Touring", 2024, REVENDA_ID);
+        VeiculoResponseDTO novoResponseDTO = new VeiculoResponseDTO(VEICULO_ID, "Honda", "Civic", "Touring", 2024, REVENDA_ID);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(veiculoRepository.save(veiculo)).thenReturn(veiculo);
+        when(veiculoMapper.toResponseDTO(veiculo)).thenReturn(novoResponseDTO);
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.delete(1L));
-        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        VeiculoResponseDTO result = veiculoService.update(VEICULO_ID, novoDto);
+
+        assertNotNull(result);
+        assertEquals(novoResponseDTO, result);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(revendaRepository).findById(REVENDA_ID);
+        verify(veiculoRepository).save(veiculo);
+        verify(veiculoMapper).toResponseDTO(veiculo);
+        verifyNoMoreInteractions(veiculoRepository, revendaRepository, veiculoMapper);
     }
 
     @Test
-    void delete_DeveLancarNotFound_QuandoVeiculoNaoExiste() {
-        mockSecurityContext(usuarioAdmin);
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.empty());
+    void atualizar_NaoAdmin_RevendaDiferente_LancaForbidden() {
+        Revenda outraRevenda = new Revenda();
+        outraRevenda.setId(OUTRA_REVENDA_ID);
+        veiculo.setRevenda(outraRevenda);
+        VeiculoRequestDTO novoDto = new VeiculoRequestDTO("Honda", "Civic", "Touring", 2024, REVENDA_ID);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> veiculoService.delete(1L));
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.update(VEICULO_ID, novoDto);
+        });
+        assertEquals(FORBIDDEN, exception.getStatusCode());
+        assertEquals("Você só pode atualizar veículos da sua revenda", exception.getReason());
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(revendaRepository, veiculoMapper);
+    }
+
+    @Test
+    void atualizar_VeiculoNaoEncontrado_LancaNotFound() {
+        VeiculoRequestDTO novoDto = new VeiculoRequestDTO("Honda", "Civic", "Touring", 2024, REVENDA_ID);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.update(VEICULO_ID, novoDto);
+        });
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Veículo não encontrado", exception.getReason());
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(revendaRepository, veiculoMapper);
+    }
+
+    @Test
+    void atualizar_RevendaNaoEncontrada_LancaNotFound() {
+        VeiculoRequestDTO novoDto = new VeiculoRequestDTO("Honda", "Civic", "Touring", 2024, REVENDA_ID);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.update(VEICULO_ID, novoDto);
+        });
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Revenda não encontrada: " + REVENDA_ID, exception.getReason());
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(revendaRepository).findById(REVENDA_ID);
+        verifyNoMoreInteractions(veiculoRepository, revendaRepository);
+        verifyNoInteractions(veiculoMapper);
+    }
+
+    @Test
+    void deletar_Admin_Sucesso() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+
+        veiculoService.delete(VEICULO_ID);
+
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(veiculoRepository).deleteById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(revendaRepository, veiculoMapper);
+    }
+
+    @Test
+    void deletar_NaoAdmin_MesmaRevenda_Sucesso() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+
+        veiculoService.delete(VEICULO_ID);
+
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(veiculoRepository).deleteById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(revendaRepository, veiculoMapper);
+    }
+
+    @Test
+    void deletar_NaoAdmin_RevendaDiferente_LancaForbidden() {
+        Revenda outraRevenda = new Revenda();
+        outraRevenda.setId(OUTRA_REVENDA_ID);
+        veiculo.setRevenda(outraRevenda);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_NAO_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.delete(VEICULO_ID);
+        });
+        assertEquals(FORBIDDEN, exception.getStatusCode());
+        assertEquals("Você só pode excluir veículos da sua revenda", exception.getReason());
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(revendaRepository, veiculoMapper);
+    }
+
+    @Test
+    void deletar_VeiculoNaoEncontrado_LancaNotFound() {
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.empty());
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            veiculoService.delete(VEICULO_ID);
+        });
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Veículo não encontrado", exception.getReason());
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verifyNoMoreInteractions(veiculoRepository);
+        verifyNoInteractions(revendaRepository, veiculoMapper);
     }
 }

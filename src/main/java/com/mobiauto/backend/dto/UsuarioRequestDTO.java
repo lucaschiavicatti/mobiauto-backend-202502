@@ -11,6 +11,11 @@ public class UsuarioRequestDTO {
     private Cargo cargo;
     private Long revendaId;
 
-    public UsuarioRequestDTO(String teste, String mail, String senha123, Cargo cargo, long l) {
+    public UsuarioRequestDTO(String nome, String email, String senha, Cargo cargo, Long revendaId) {
+        this.nome = nome;
+        this.email = email;
+        this.senha = senha;
+        this.cargo = cargo;
+        this.revendaId = revendaId;
     }
 }

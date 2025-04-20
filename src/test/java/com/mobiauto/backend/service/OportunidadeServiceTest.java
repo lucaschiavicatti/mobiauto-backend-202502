@@ -2,24 +2,21 @@ package com.mobiauto.backend.service;
 
 import com.mobiauto.backend.dto.OportunidadeRequestDTO;
 import com.mobiauto.backend.dto.OportunidadeResponseDTO;
-import com.mobiauto.backend.dto.UsuarioResponseDTO;
+import com.mobiauto.backend.dto.OportunidadeResponseDTO.ClienteDTO;
+import com.mobiauto.backend.dto.OportunidadeResponseDTO.VeiculoDTO;
 import com.mobiauto.backend.mapper.OportunidadeMapper;
 import com.mobiauto.backend.model.*;
-import com.mobiauto.backend.repository.ClienteRepository;
-import com.mobiauto.backend.repository.OportunidadeRepository;
-import com.mobiauto.backend.repository.RevendaRepository;
-import com.mobiauto.backend.repository.UsuarioRepository;
-import com.mobiauto.backend.repository.VeiculoRepository;
+import com.mobiauto.backend.repository.*;
+import com.mobiauto.backend.utils.JwtAuthUtil;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -27,278 +24,502 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-import static com.mobiauto.backend.model.Cargo.ASSISTENTE;
+import static com.mobiauto.backend.model.Cargo.*;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
+import static org.springframework.http.HttpStatus.*;
 
 @ExtendWith(MockitoExtension.class)
 class OportunidadeServiceTest {
 
+    private static final Long OPORTUNIDADE_ID = 1L;
+    private static final Long CLIENTE_ID = 1L;
+    private static final Long VEICULO_ID = 1L;
+    private static final Long REVENDA_ID = 1L;
+    private static final Long OUTRA_REVENDA_ID = 2L;
+    private static final Long USUARIO_ID = 1L;
+    private static final String STATUS = "EM_ATENDIMENTO";
+    private static final String CLIENTE_NOME = "Cliente Teste";
+    private static final String CLIENTE_EMAIL = "cliente@example.com";
+    private static final String CLIENTE_TELEFONE = "123456789";
+    private static final String VEICULO_MARCA = "Toyota";
+    private static final String VEICULO_MODELO = "Corolla";
+    private static final String VEICULO_VERSAO = "XLT";
+    private static final Integer VEICULO_ANO_MODELO = 2023;
+    private static final List<Cargo> CARGOS_ADMIN = List.of(ADMINISTRADOR);
+    private static final List<Cargo> CARGOS_ASSISTENTE = List.of(ASSISTENTE);
     @Mock
     private OportunidadeRepository oportunidadeRepository;
-
     @Mock
     private ClienteRepository clienteRepository;
-
     @Mock
     private VeiculoRepository veiculoRepository;
-
     @Mock
     private RevendaRepository revendaRepository;
-
-    @Mock
-    private UsuarioService usuarioService;
-
     @Mock
     private UsuarioRepository usuarioRepository;
-
     @Mock
     private OportunidadeMapper oportunidadeMapper;
-
+    @Mock
+    private Jwt jwt;
     @InjectMocks
     private OportunidadeService oportunidadeService;
-
-    private Usuario usuarioAdmin;
-    private Usuario usuarioGerente;
+    private Oportunidade oportunidade;
+    private Cliente cliente;
+    private Veiculo veiculo;
     private Revenda revenda;
+    private Usuario usuario;
+    private OportunidadeRequestDTO oportunidadeRequestDTO;
+    private OportunidadeResponseDTO oportunidadeResponseDTO;
+    private MockedStatic<JwtAuthUtil> jwtAuthUtilMockedStatic;
 
     @BeforeEach
     void setUp() {
-        usuarioAdmin = new Usuario(1L, "Admin", "admin@example.com", "senha", Cargo.ADMINISTRADOR, new Revenda(1L));
-        revenda = new Revenda(1L);
-        usuarioGerente = new Usuario(2L, "Gerente", "gerente@example.com", "senha", Cargo.GERENTE, revenda);
+        revenda = new Revenda();
+        revenda.setId(REVENDA_ID);
+
+        cliente = new Cliente();
+        cliente.setId(CLIENTE_ID);
+        cliente.setNome(CLIENTE_NOME);
+        cliente.setEmail(CLIENTE_EMAIL);
+        cliente.setTelefone(CLIENTE_TELEFONE);
+
+        veiculo = new Veiculo();
+        veiculo.setId(VEICULO_ID);
+        veiculo.setMarca(VEICULO_MARCA);
+        veiculo.setModelo(VEICULO_MODELO);
+        veiculo.setVersao(VEICULO_VERSAO);
+        veiculo.setAnoModelo(VEICULO_ANO_MODELO);
+
+        usuario = new Usuario();
+        usuario.setId(USUARIO_ID);
+        usuario.setRevenda(revenda);
+
+        oportunidade = new Oportunidade();
+        oportunidade.setId(OPORTUNIDADE_ID);
+        oportunidade.setCliente(cliente);
+        oportunidade.setVeiculo(veiculo);
+        oportunidade.setUsuario(usuario);
+        oportunidade.setRevenda(revenda);
+        oportunidade.setStatus(StatusOportunidade.EM_ATENDIMENTO);
+        oportunidade.setDataAtribuicao(LocalDateTime.now());
+
+        oportunidadeRequestDTO = new OportunidadeRequestDTO(
+                CLIENTE_ID, VEICULO_ID, USUARIO_ID, REVENDA_ID, STATUS, null
+        );
+
+        oportunidadeResponseDTO = new OportunidadeResponseDTO(
+                OPORTUNIDADE_ID,
+                new ClienteDTO(CLIENTE_ID, CLIENTE_NOME, CLIENTE_EMAIL, CLIENTE_TELEFONE),
+                new VeiculoDTO(VEICULO_ID, VEICULO_MARCA, VEICULO_MODELO, VEICULO_VERSAO, VEICULO_ANO_MODELO),
+                USUARIO_ID,
+                REVENDA_ID,
+                STATUS,
+                null,
+                oportunidade.getDataAtribuicao(),
+                null
+        );
+
+        jwtAuthUtilMockedStatic = mockStatic(JwtAuthUtil.class);
     }
 
-    private void mockSecurityContext(Usuario usuario) {
-        Authentication authentication = mock(Authentication.class);
-        when(authentication.getPrincipal()).thenReturn(usuario);
-        SecurityContext securityContext = mock(SecurityContext.class);
-        when(securityContext.getAuthentication()).thenReturn(authentication);
-        SecurityContextHolder.setContext(securityContext);
+    @AfterEach
+    void tearDown() {
+        jwtAuthUtilMockedStatic.close();
     }
 
     @Test
-    void findAll_DeveRetornarTodasOportunidades_QuandoUsuarioAdmin() {
-        mockSecurityContext(usuarioAdmin);
-        Oportunidade oportunidade = new Oportunidade();
+    void buscarTodos_Admin_RetornaTodasOportunidades() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
         when(oportunidadeRepository.findAll()).thenReturn(List.of(oportunidade));
-        OportunidadeResponseDTO dto = new OportunidadeResponseDTO(
-                1L,
-                new OportunidadeResponseDTO.ClienteDTO(1L, "Cliente", "cliente@example.com", "123"),
-                new OportunidadeResponseDTO.VeiculoDTO(1L, "VW", "Gol", "1.0", 2020),
-                2L,
-                1L,
-                "EM_ATENDIMENTO",
-                null,
-                LocalDateTime.now(),
-                null
-        );
-        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(dto);
-
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
+        
         List<OportunidadeResponseDTO> result = oportunidadeService.findAll();
 
+        assertNotNull(result);
         assertEquals(1, result.size());
-        assertEquals(dto, result.get(0));
+        OportunidadeResponseDTO dto = result.get(0);
+        assertEquals(oportunidadeResponseDTO.id(), dto.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), dto.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), dto.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), dto.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), dto.veiculo().marca());
         verify(oportunidadeRepository).findAll();
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
+        verifyNoMoreInteractions(oportunidadeRepository);
     }
 
     @Test
-    void findAll_DeveRetornarOportunidadesDaRevenda_QuandoUsuarioNaoAdmin() {
-        mockSecurityContext(usuarioGerente);
-        Oportunidade oportunidade = new Oportunidade();
-        when(oportunidadeRepository.findAllByRevenda_Id(1L)).thenReturn(List.of(oportunidade));
-        OportunidadeResponseDTO dto = new OportunidadeResponseDTO(
-                1L,
-                new OportunidadeResponseDTO.ClienteDTO(1L, "Cliente", "cliente@example.com", "123"),
-                new OportunidadeResponseDTO.VeiculoDTO(1L, "VW", "Gol", "1.0", 2020),
-                2L,
-                1L,
-                "EM_ATENDIMENTO",
-                null,
-                LocalDateTime.now(),
-                null
-        );
-        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(dto);
+    void buscarTodos_NaoAdmin_RetornaOportunidadesPorRevenda() {
 
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ASSISTENTE);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(oportunidadeRepository.findAllByRevenda_Id(REVENDA_ID)).thenReturn(List.of(oportunidade));
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
+        
         List<OportunidadeResponseDTO> result = oportunidadeService.findAll();
-
+        
+        assertNotNull(result);
         assertEquals(1, result.size());
-        assertEquals(dto, result.get(0));
-        verify(oportunidadeRepository).findAllByRevenda_Id(1L);
+        OportunidadeResponseDTO dto = result.get(0);
+        assertEquals(oportunidadeResponseDTO.id(), dto.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), dto.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), dto.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), dto.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), dto.veiculo().marca());
+        verify(oportunidadeRepository).findAllByRevenda_Id(REVENDA_ID);
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
+        verifyNoMoreInteractions(oportunidadeRepository);
     }
 
     @Test
-    void findById_DeveRetornarOportunidade_QuandoUsuarioTemAcesso() {
-        mockSecurityContext(usuarioGerente);
-        Oportunidade oportunidade = new Oportunidade();
-        oportunidade.setRevenda(revenda);
-        when(oportunidadeRepository.findById(1L)).thenReturn(Optional.of(oportunidade));
-        OportunidadeResponseDTO dto = new OportunidadeResponseDTO(
-                1L,
-                new OportunidadeResponseDTO.ClienteDTO(1L, "Cliente", "cliente@example.com", "123"),
-                new OportunidadeResponseDTO.VeiculoDTO(1L, "VW", "Gol", "1.0", 2020),
-                2L,
-                1L,
-                "EM_ATENDIMENTO",
-                null,
-                LocalDateTime.now(),
-                null
-        );
-        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(dto);
+    void buscarPorId_Admin_Sucesso() {
 
-        OportunidadeResponseDTO result = oportunidadeService.findById(1L);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString()); 
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.of(oportunidade));
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
 
-        assertEquals(dto, result);
-        verify(oportunidadeRepository).findById(1L);
+
+        OportunidadeResponseDTO result = oportunidadeService.findById(OPORTUNIDADE_ID);
+
+
+        assertNotNull(result);
+        assertEquals(oportunidadeResponseDTO.id(), result.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), result.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), result.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), result.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), result.veiculo().marca());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
     }
 
     @Test
-    void findById_DeveLancarNotFound_QuandoOportunidadeNaoExiste() {
-        mockSecurityContext(usuarioGerente);
-        when(oportunidadeRepository.findById(1L)).thenReturn(Optional.empty());
+    void buscarPorId_NaoAdmin_MesmaRevenda_Sucesso() {
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.findById(1L));
-        assertEquals(HttpStatus.NOT_FOUND, exception.getStatusCode());
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ASSISTENTE);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.of(oportunidade));
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
+
+
+        OportunidadeResponseDTO result = oportunidadeService.findById(OPORTUNIDADE_ID);
+
+
+        assertNotNull(result);
+        assertEquals(oportunidadeResponseDTO.id(), result.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), result.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), result.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), result.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), result.veiculo().marca());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
     }
 
     @Test
-    void save_DeveSalvarOportunidade_QuandoDadosValidosComUsuario() {
-        mockSecurityContext(usuarioGerente);
-        OportunidadeRequestDTO dto = new OportunidadeRequestDTO(1L, 1L, 2L, 1L, "EM_ATENDIMENTO", null);
-        Cliente cliente = new Cliente();
-        Veiculo veiculo = new Veiculo();
-        Usuario usuario = new Usuario(2L, "Assistente", "assistente@example.com", "senha", ASSISTENTE, revenda);
-        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
-        when(revendaRepository.findById(1L)).thenReturn(Optional.of(revenda));
-        when(usuarioRepository.findById(2L)).thenReturn(Optional.of(usuario));
-        Oportunidade oportunidade = new Oportunidade();
+    void buscarPorId_NaoAdmin_RevendaDiferente_LancaForbidden() {
+
+        Revenda outraRevenda = new Revenda();
+        outraRevenda.setId(OUTRA_REVENDA_ID);
+        oportunidade.setRevenda(outraRevenda);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ASSISTENTE);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.of(oportunidade));
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.findById(OPORTUNIDADE_ID));
+        assertEquals(FORBIDDEN, exception.getStatusCode());
+        assertEquals("Você só pode acessar oportunidades da sua revenda", exception.getReason());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verifyNoInteractions(oportunidadeMapper);
+    }
+
+    @Test
+    void buscarPorId_NaoEncontrado_LancaNotFound() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.empty());
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.findById(OPORTUNIDADE_ID));
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Oportunidade não encontrada", exception.getReason());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verifyNoInteractions(oportunidadeMapper);
+    }
+
+    @Test
+    void salvar_Admin_Sucesso() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(clienteRepository.findById(CLIENTE_ID)).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(usuarioRepository.findById(USUARIO_ID)).thenReturn(Optional.of(usuario));
         when(oportunidadeRepository.save(any(Oportunidade.class))).thenReturn(oportunidade);
-        OportunidadeResponseDTO responseDTO = new OportunidadeResponseDTO(
-                1L,
-                new OportunidadeResponseDTO.ClienteDTO(1L, "Cliente", "cliente@example.com", "123"),
-                new OportunidadeResponseDTO.VeiculoDTO(1L, "VW", "Gol", "1.0", 2020),
-                2L,
-                1L,
-                "EM_ATENDIMENTO",
-                null,
-                LocalDateTime.now(),
-                null
-        );
-        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(responseDTO);
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
 
-        OportunidadeResponseDTO result = oportunidadeService.save(dto);
+        OportunidadeResponseDTO result = oportunidadeService.save(oportunidadeRequestDTO);
 
-        assertEquals(responseDTO, result);
-        verify(oportunidadeRepository).save(any(Oportunidade.class));
+        assertNotNull(result);
+        assertEquals(oportunidadeResponseDTO.id(), result.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), result.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), result.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), result.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), result.veiculo().marca());
+        verify(clienteRepository).findById(CLIENTE_ID);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(revendaRepository).findById(REVENDA_ID);
+        verify(usuarioRepository).findById(USUARIO_ID);
         verify(usuarioRepository).save(usuario);
-    }
-
-    @Test
-    void save_DeveSalvarOportunidade_QuandoDistribuicaoAutomatica() {
-        mockSecurityContext(usuarioGerente);
-        OportunidadeRequestDTO dto = new OportunidadeRequestDTO(1L, 1L, null, 1L, "EM_ATENDIMENTO", null);
-        Cliente cliente = new Cliente();
-        Veiculo veiculo = new Veiculo();
-        Usuario assistente = new Usuario(3L, "Assistente", "assistente@example.com", "senha", ASSISTENTE, revenda);
-        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
-        when(revendaRepository.findById(1L)).thenReturn(Optional.of(revenda));
-        when(usuarioService.findAll()).thenReturn(List.of(new UsuarioResponseDTO(3L, "Assistente", "assistente@example.com", ASSISTENTE, 1L, null)));
-        when(usuarioService.toUsuario(any(UsuarioResponseDTO.class))).thenReturn(assistente);
-        Oportunidade oportunidade = new Oportunidade();
-        when(oportunidadeRepository.save(any(Oportunidade.class))).thenReturn(oportunidade);
-        OportunidadeResponseDTO responseDTO = new OportunidadeResponseDTO(
-                1L,
-                new OportunidadeResponseDTO.ClienteDTO(1L, "Cliente", "cliente@example.com", "123"),
-                new OportunidadeResponseDTO.VeiculoDTO(1L, "VW", "Gol", "1.0", 2020),
-                3L,
-                1L,
-                "EM_ATENDIMENTO",
-                null,
-                LocalDateTime.now(),
-                null
-        );
-        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(responseDTO);
-
-        OportunidadeResponseDTO result = oportunidadeService.save(dto);
-
-        assertEquals(responseDTO, result);
         verify(oportunidadeRepository).save(any(Oportunidade.class));
-        verify(usuarioRepository).save(assistente);
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
     }
 
     @Test
-    void save_DeveLancarBadRequest_QuandoConcluidoSemMotivo() {
-        mockSecurityContext(usuarioGerente);
-        OportunidadeRequestDTO dto = new OportunidadeRequestDTO(1L, 1L, 2L, 1L, "CONCLUIDO", null);
-        Cliente cliente = new Cliente();
-        Veiculo veiculo = new Veiculo();
-        Usuario usuario = new Usuario(2L, "Assistente", "assistente@example.com", "senha", ASSISTENTE, revenda);
-        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
-        when(revendaRepository.findById(1L)).thenReturn(Optional.of(revenda));
-        when(usuarioRepository.findById(2L)).thenReturn(Optional.of(usuario));
+    void salvar_SemUsuario_DistribuiAssistente_Sucesso() {
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.save(dto));
-        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
-    }
-
-    @Test
-    void update_DeveAtualizarOportunidade_QuandoUsuarioTemPermissao() {
-        mockSecurityContext(usuarioGerente);
-        OportunidadeRequestDTO dto = new OportunidadeRequestDTO(1L, 1L, 2L, 1L, "CONCLUIDO", "Venda realizada");
-        Oportunidade oportunidade = new Oportunidade();
-        oportunidade.setRevenda(revenda);
-        oportunidade.setUsuario(usuarioGerente);
-        when(oportunidadeRepository.findById(1L)).thenReturn(Optional.of(oportunidade));
-        Cliente cliente = new Cliente();
-        Veiculo veiculo = new Veiculo();
-        Usuario usuario = new Usuario(2L, "Assistente", "assistente@example.com", "senha", ASSISTENTE, revenda);
-        when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
-        when(veiculoRepository.findById(1L)).thenReturn(Optional.of(veiculo));
-        when(revendaRepository.findById(1L)).thenReturn(Optional.of(revenda));
-        when(usuarioRepository.findById(2L)).thenReturn(Optional.of(usuario));
-        when(oportunidadeRepository.save(any(Oportunidade.class))).thenReturn(oportunidade);
-        OportunidadeResponseDTO responseDTO = new OportunidadeResponseDTO(
-                1L,
-                new OportunidadeResponseDTO.ClienteDTO(1L, "Cliente", "cliente@example.com", "123"),
-                new OportunidadeResponseDTO.VeiculoDTO(1L, "VW", "Gol", "1.0", 2020),
-                2L,
-                1L,
-                "CONCLUIDO",
-                "Venda realizada",
-                LocalDateTime.now(),
-                LocalDateTime.now()
+        OportunidadeRequestDTO dtoSemUsuario = new OportunidadeRequestDTO(
+                CLIENTE_ID, VEICULO_ID, null, REVENDA_ID, STATUS, null
         );
-        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(responseDTO);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(clienteRepository.findById(CLIENTE_ID)).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(usuarioRepository.findByCargoAndRevendaId(ASSISTENTE, REVENDA_ID)).thenReturn(List.of(usuario));
+        when(oportunidadeRepository.save(any(Oportunidade.class))).thenReturn(oportunidade);
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
 
-        OportunidadeResponseDTO result = oportunidadeService.update(1L, dto);
+        OportunidadeResponseDTO result = oportunidadeService.save(dtoSemUsuario);
 
-        assertEquals(responseDTO, result);
+        assertNotNull(result);
+        assertEquals(oportunidadeResponseDTO.id(), result.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), result.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), result.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), result.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), result.veiculo().marca());
+        verify(clienteRepository).findById(CLIENTE_ID);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(revendaRepository).findById(REVENDA_ID);
+        verify(usuarioRepository).findByCargoAndRevendaId(ASSISTENTE, REVENDA_ID);
+        verify(usuarioRepository).save(usuario);
         verify(oportunidadeRepository).save(any(Oportunidade.class));
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
     }
 
     @Test
-    void delete_DeveDeletarOportunidade_QuandoUsuarioTemPermissao() {
-        mockSecurityContext(usuarioGerente);
-        Oportunidade oportunidade = new Oportunidade();
-        oportunidade.setRevenda(revenda);
-        when(oportunidadeRepository.findById(1L)).thenReturn(Optional.of(oportunidade));
+    void salvar_ClienteNaoEncontrado_LancaNotFound() {
 
-        oportunidadeService.delete(1L);
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(clienteRepository.findById(CLIENTE_ID)).thenReturn(Optional.empty());
 
-        verify(oportunidadeRepository).deleteById(1L);
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.save(oportunidadeRequestDTO));
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Cliente não encontrado: " + CLIENTE_ID, exception.getReason());
+        verify(clienteRepository).findById(CLIENTE_ID);
+        verifyNoInteractions(veiculoRepository, revendaRepository, usuarioRepository, oportunidadeRepository, oportunidadeMapper);
     }
 
     @Test
-    void delete_DeveLancarForbidden_QuandoUsuarioSemPermissao() {
-        mockSecurityContext(usuarioGerente);
-        Oportunidade oportunidade = new Oportunidade();
-        oportunidade.setRevenda(new Revenda(2L));
-        when(oportunidadeRepository.findById(1L)).thenReturn(Optional.of(oportunidade));
+    void salvar_NaoAdmin_RevendaDiferente_LancaForbidden() {
 
-        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.delete(1L));
-        assertEquals(HttpStatus.FORBIDDEN, exception.getStatusCode());
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ASSISTENTE);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(OUTRA_REVENDA_ID.toString());
+
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.save(oportunidadeRequestDTO));
+        assertEquals(FORBIDDEN, exception.getStatusCode());
+        assertEquals("Você só pode criar oportunidades na sua revenda", exception.getReason());
+        verifyNoInteractions(clienteRepository, veiculoRepository, revendaRepository, usuarioRepository, oportunidadeRepository, oportunidadeMapper);
+    }
+
+    @Test
+    void salvar_StatusConcluido_SemMotivo_LancaBadRequest() {
+
+        OportunidadeRequestDTO dtoConcluido = new OportunidadeRequestDTO(
+                CLIENTE_ID, VEICULO_ID, USUARIO_ID, REVENDA_ID, "CONCLUIDO", null
+        );
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(clienteRepository.findById(CLIENTE_ID)).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(usuarioRepository.findById(USUARIO_ID)).thenReturn(Optional.of(usuario));
+
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.save(dtoConcluido));
+        assertEquals(BAD_REQUEST, exception.getStatusCode());
+        assertEquals("Motivo de conclusão é obrigatório para status CONCLUIDO", exception.getReason());
+        verify(clienteRepository).findById(CLIENTE_ID);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(revendaRepository).findById(REVENDA_ID);
+        verify(usuarioRepository).findById(USUARIO_ID);
+        verifyNoInteractions(oportunidadeRepository, oportunidadeMapper);
+    }
+
+    @Test
+    void atualizar_Admin_Sucesso() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(jwt.getSubject()).thenReturn("2"); 
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.of(oportunidade));
+        when(clienteRepository.findById(CLIENTE_ID)).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(usuarioRepository.findById(USUARIO_ID)).thenReturn(Optional.of(usuario));
+        when(oportunidadeRepository.save(oportunidade)).thenReturn(oportunidade);
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
+
+
+        OportunidadeResponseDTO result = oportunidadeService.update(OPORTUNIDADE_ID, oportunidadeRequestDTO);
+
+
+        assertNotNull(result);
+        assertEquals(oportunidadeResponseDTO.id(), result.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), result.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), result.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), result.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), result.veiculo().marca());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verify(clienteRepository).findById(CLIENTE_ID);
+        verify(veiculoRepository).findById(VEICULO_ID);
+        verify(revendaRepository).findById(REVENDA_ID);
+        verify(usuarioRepository).findById(USUARIO_ID);
+        verify(usuarioRepository).save(usuario);
+        verify(oportunidadeRepository).save(oportunidade);
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
+    }
+
+    @Test
+    void atualizar_Assistente_NaoProprietario_LancaForbidden() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ASSISTENTE);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(jwt.getSubject()).thenReturn("2"); 
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.of(oportunidade));
+
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.update(OPORTUNIDADE_ID, oportunidadeRequestDTO));
+        assertEquals(FORBIDDEN, exception.getStatusCode());
+        assertEquals("Você só pode editar suas próprias oportunidades", exception.getReason());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verifyNoInteractions(clienteRepository, veiculoRepository, revendaRepository, usuarioRepository, oportunidadeMapper);
+    }
+
+    @Test
+    void atualizar_NaoEncontrado_LancaNotFound() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.empty());
+
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.update(OPORTUNIDADE_ID, oportunidadeRequestDTO));
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Oportunidade não encontrada", exception.getReason());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verifyNoInteractions(clienteRepository, veiculoRepository, revendaRepository, usuarioRepository, oportunidadeMapper);
+    }
+
+    @Test
+    void deletar_Admin_Sucesso() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.of(oportunidade));
+
+
+        oportunidadeService.delete(OPORTUNIDADE_ID);
+
+
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verify(oportunidadeRepository).deleteById(OPORTUNIDADE_ID);
+        verifyNoInteractions(clienteRepository, veiculoRepository, revendaRepository, usuarioRepository, oportunidadeMapper);
+    }
+
+    @Test
+    void deletar_NaoEncontrado_LancaNotFound() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(oportunidadeRepository.findById(OPORTUNIDADE_ID)).thenReturn(Optional.empty());
+
+         
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.delete(OPORTUNIDADE_ID));
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Oportunidade não encontrada", exception.getReason());
+        verify(oportunidadeRepository).findById(OPORTUNIDADE_ID);
+        verifyNoInteractions(clienteRepository, veiculoRepository, revendaRepository, usuarioRepository, oportunidadeMapper);
+    }
+
+    @Test
+    void distribuirParaAssistente_Sucesso() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(clienteRepository.findById(CLIENTE_ID)).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(usuarioRepository.findByCargoAndRevendaId(ASSISTENTE, REVENDA_ID)).thenReturn(List.of(usuario));
+        when(oportunidadeRepository.save(any(Oportunidade.class))).thenReturn(oportunidade);
+        when(oportunidadeMapper.toResponseDTO(oportunidade)).thenReturn(oportunidadeResponseDTO);
+
+        OportunidadeRequestDTO dtoSemUsuario = new OportunidadeRequestDTO(
+                CLIENTE_ID, VEICULO_ID, null, REVENDA_ID, STATUS, null
+        );
+
+        OportunidadeResponseDTO result = oportunidadeService.save(dtoSemUsuario);
+
+        assertNotNull(result);
+        assertEquals(oportunidadeResponseDTO.id(), result.id());
+        assertEquals(oportunidadeResponseDTO.cliente().id(), result.cliente().id());
+        assertEquals(oportunidadeResponseDTO.cliente().nome(), result.cliente().nome());
+        assertEquals(oportunidadeResponseDTO.veiculo().id(), result.veiculo().id());
+        assertEquals(oportunidadeResponseDTO.veiculo().marca(), result.veiculo().marca());
+        verify(usuarioRepository).findByCargoAndRevendaId(ASSISTENTE, REVENDA_ID);
+        verify(oportunidadeRepository).save(any(Oportunidade.class));
+        verify(oportunidadeMapper).toResponseDTO(oportunidade);
+    }
+
+    @Test
+    void distribuirParaAssistente_SemAssistentes_LancaNotFound() {
+
+        jwtAuthUtilMockedStatic.when(JwtAuthUtil::getJwt).thenReturn(jwt);
+        jwtAuthUtilMockedStatic.when(() -> JwtAuthUtil.getCargosFromJwt(jwt)).thenReturn(CARGOS_ADMIN);
+        when(jwt.getClaimAsString("revendaId")).thenReturn(REVENDA_ID.toString());
+        when(clienteRepository.findById(CLIENTE_ID)).thenReturn(Optional.of(cliente));
+        when(veiculoRepository.findById(VEICULO_ID)).thenReturn(Optional.of(veiculo));
+        when(revendaRepository.findById(REVENDA_ID)).thenReturn(Optional.of(revenda));
+        when(usuarioRepository.findByCargoAndRevendaId(ASSISTENTE, REVENDA_ID)).thenReturn(Collections.emptyList());
+
+        OportunidadeRequestDTO dtoSemUsuario = new OportunidadeRequestDTO(
+                CLIENTE_ID, VEICULO_ID, null, REVENDA_ID, STATUS, null
+        );
+
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> oportunidadeService.save(dtoSemUsuario));
+        assertEquals(NOT_FOUND, exception.getStatusCode());
+        assertEquals("Nenhum assistente disponível na revenda", exception.getReason());
+        verify(usuarioRepository).findByCargoAndRevendaId(ASSISTENTE, REVENDA_ID);
+        verifyNoInteractions(oportunidadeRepository, oportunidadeMapper);
     }
 }

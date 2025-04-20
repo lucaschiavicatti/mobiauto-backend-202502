@@ -1,10 +1,12 @@
 package com.mobiauto.backend.model;
 
+import com.mobiauto.backend.dto.LoginRequestDTO;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -13,6 +15,7 @@ import java.util.Collections;
 @Entity
 @Data
 public class Usuario implements UserDetails {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -82,5 +85,9 @@ public class Usuario implements UserDetails {
     @Override
     public boolean isEnabled() {
         return true;
+    }
+
+    public boolean isLoginCorrect(PasswordEncoder passwordEncoder, LoginRequestDTO loginRequestDTO) {
+        return passwordEncoder.matches(loginRequestDTO.getSenha(), this.senha);
     }
 }

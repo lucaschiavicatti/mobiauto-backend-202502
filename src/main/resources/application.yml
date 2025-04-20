@@ -12,5 +12,11 @@ spring:
           hibernate:
             format_sql: true
 jwt:
-  secret: "+aufklr/RJXdPB22fypgby4YO5ZrjSKnv3HVuA+GpEjhF0QtO4bvnIBxFyApskP4KAZADGBRUAFWWhYL9IWqObk4" # 66 bytes
-  expiration: 86400000 # 24 horas
+  public:
+    key: classpath:app.pub
+  private:
+    key: classpath:app.key
+logging:
+  level:
+    root: INFO # Define o nível global do sistema
+    com.mobiauto.backend: DEBUG # Nível específico para as classes
