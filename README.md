@@ -1,6 +1,6 @@
 # Mobiauto Backend 202502
 
-Bem-vindo ao **Mobiauto Backend 202502**, uma solução robusta e escalável desenvolvida como parte do teste técnico para a Mobiauto! Este projeto demonstra habilidades em arquitetura de sistemas, desenvolvimento backend em Java e boas práticas de engenharia de software.
+Este projeto foi desenvolvido para aplicar na prática meus conhecimentos em arquitetura de sistemas, desenvolvimento backend com Java, segurança com OAuth2 e Spring Security, persistência com Spring Data JPA, além de testes automatizados e conteinerização com Docker. Ele simula um ambiente real de API RESTful voltada à gestão de usuários e veículos em concessionárias, com foco em boas práticas, escalabilidade e segurança.
 
 ---
 
@@ -35,6 +35,7 @@ O **Mobiauto Backend** é uma API RESTful projetada para gerenciar revendas de v
 - **Spring Data JPA**: Persistência de dados.
 - **Lombok**: Redução de boilerplate no código.
 - **JUnit 5 e Mockito**: Testes unitários.
+- **Oauth2**: Protocolo de autorização.
 
 ### 4. Componentes da Arquitetura
 
@@ -48,7 +49,6 @@ O **Mobiauto Backend** é uma API RESTful projetada para gerenciar revendas de v
 O projeto inclui um arquivo docker-compose.yml para facilitar a execução em containers. Ele configura a aplicação e o banco de dados PostgreSQL.
 
 ```
-version: '3.8'
 services:
   db:
     image: postgres:15
@@ -74,6 +74,7 @@ volumes:
 * mapstruct
 * jjwt-api
 * caelum-stella-core
+* spring-boot-starter-oauth2-resource-server
 
 ### 7. Variáveis de Ambiente
 
@@ -84,11 +85,6 @@ spring:
         username: admin
         password: admin123
 ```
-
-### 8. Suporte e Contato
-
-* E-mail: lucaschiavicatti@hotmail.com
-* [GITHUB](https://github.com/lucaschiavicatti/mobiauto-backend-202502)
 
 
 
