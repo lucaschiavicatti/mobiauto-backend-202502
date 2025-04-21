@@ -1,4 +1,4 @@
-# Mobiauto Backend 202502
+# Mobiauto Backend
 
 Este projeto foi desenvolvido para aplicar na prática meus conhecimentos em arquitetura de sistemas, desenvolvimento backend com Java, segurança com OAuth2 e Spring Security, persistência com Spring Data JPA, além de testes automatizados e conteinerização com Docker. Ele simula um ambiente real de API RESTful voltada à gestão de usuários e veículos em concessionárias, com foco em boas práticas, escalabilidade e segurança.
 
